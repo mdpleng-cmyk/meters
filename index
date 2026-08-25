@@ -4,116 +4,163 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
 <title>MDPL Meter Readings</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  body { -webkit-tap-highlight-color: transparent; }
-  input[type=number]::-webkit-inner-spin-button,
-  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  :root {
+    --bg: #1B1E21; --panel: #24282C; --panel-raised: #2A2F34; --border: #383E44;
+    --text: #E8EAED; --text-muted: #8B9198; --amber: #FFB020; --amber-dim: #6B4A16;
+    --green: #3ECF8E; --green-bg: rgba(62, 207, 142, 0.14); --red: #E5484D; --red-bg: rgba(229, 72, 77, 0.14); --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, sans-serif; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 16px 14px 40px; }
+  .wrap.wide { max-width: 1100px; }
+  .eyebrow { font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  h1 { font-family: 'Oswald', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin: 2px 0 0; color: var(--text); }
+  h1 span { color: var(--amber); }
+  header.appbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; }
+  select, input[type=number], input[type=date], input[type=text] { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 9px 10px; font-family: 'JetBrains Mono', monospace; font-size: 14px; width: 100%; }
+  select:focus, input:focus { outline: none; border-color: var(--amber-dim); }
+  input::placeholder { color: var(--text-muted); }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  label.field-label { font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px; }
+  button { font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 10px 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel-raised); color: var(--text); cursor: pointer; }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button.primary { background: rgba(255,176,32,0.12); border-color: var(--amber-dim); color: var(--amber); }
+  button.warn { background: rgba(229,72,77,0.12); border-color: #7A2B2E; color: var(--red); }
+  button.big { width: 100%; padding: 16px; font-size: 15px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; }
+  .field { margin-bottom: 12px; }
+  .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 6px; box-shadow: 0 0 6px var(--green); }
+  .hero-number { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--amber); text-shadow: 0 0 16px var(--amber-dim); line-height: 1; }
+  .section-label { font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); margin: 0 0 12px; }
+  .section-label .count { font-family: 'Inter', sans-serif; font-weight: 400; font-size: 11px; color: var(--text-muted); text-transform: none; letter-spacing: 0; margin-left: 6px; }
+  .table-wrap { overflow-x: auto; overflow-y: auto; max-height: 360px; border: 1px solid var(--border); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 12px; min-width: 560px; }
+  th { font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 500; color: var(--text-muted); background: var(--panel-raised); text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--text); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .readout-empty { font-size: 13px; color: var(--text-muted); }
+  .tab-nav { display: flex; gap: 4px; }
+  .tab-btn { flex: 1; background: transparent; border: none; border-radius: 0; padding: 6px 10px; color: var(--text-muted); border-bottom: 2px solid transparent; }
+  .tab-btn.active { color: var(--amber); border-bottom-color: var(--amber); }
+  .pin-dot { width: 14px; height: 14px; border-radius: 9999px; border: 2px solid var(--text-muted); }
+  .pin-dot.filled { background: var(--amber); border-color: var(--amber); }
   .toast { animation: slideUp .25s ease-out, fadeOut .3s ease-in 2.2s forwards; }
   @keyframes slideUp { from { transform: translateY(20px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
   @keyframes fadeOut { to { opacity: 0 } }
-  .pin-dot { width: 14px; height: 14px; border-radius: 9999px; border: 2px solid #94a3b8; }
-  .pin-dot.filled { background: #0f172a; border-color: #0f172a; }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .filters > div { min-width: 130px; }
+  .filters label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+  .hidden { display: none !important; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .checklist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+  .check-card { border-radius: var(--radius); padding: 10px; border: 1px solid var(--border); background: var(--panel-raised); }
+  .check-card.read { background: var(--green-bg); border-color: rgba(62,207,142,0.35); }
+  .check-name { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--text); }
+  .check-sub { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .check-status { font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 4px; }
+  .meter-dropdown { position: absolute; z-index: 20; width: 100%; background: var(--panel-raised); border: 1px solid var(--border); border-radius: var(--radius); margin-top: 4px; max-height: 240px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .meter-row { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .meter-row:last-child { border-bottom: none; }
+  .meter-row:hover { background: var(--bg); }
+  .meter-row p.code { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--text); margin: 0; }
+  .meter-row p.loc { font-size: 11px; color: var(--text-muted); margin: 2px 0 0; }
 </style>
 </head>
-<body class="bg-slate-100 min-h-screen text-slate-800">
+<body>
 
 <!-- ============ LOGIN SCREEN ============ -->
-<div id="login-screen" class="min-h-screen flex flex-col items-center justify-center p-6">
-  <div class="w-full max-w-sm">
-    <h1 class="text-2xl font-bold text-center mb-1">MDPL Meter Readings</h1>
-    <p class="text-center text-slate-500 mb-6" id="login-subtitle">Tap your name to sign in</p>
+<div id="login-screen" class="wrap" style="min-height:100vh; display:flex; flex-direction:column; justify-content:center;">
+  <div class="eyebrow" style="text-align:center;">MDPL &middot; Utilities</div>
+  <h1 style="text-align:center; margin-bottom:6px;">Meter <span>Readings</span></h1>
+  <p id="login-subtitle" class="readout-empty" style="text-align:center; margin-bottom:20px;">Tap your name to sign in</p>
 
-    <div id="operator-picker" class="grid grid-cols-2 gap-3"></div>
+  <div id="operator-picker" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;"></div>
 
-    <div id="pin-pad-screen" class="hidden">
-      <button id="pin-back-btn" class="text-slate-500 mb-4 flex items-center gap-1">&larr; Back</button>
-      <p class="text-center text-lg font-semibold mb-4" id="pin-operator-name"></p>
-      <div class="flex justify-center gap-3 mb-6" id="pin-dots"></div>
-      <div class="grid grid-cols-3 gap-3" id="pin-keys"></div>
-    </div>
-
-    <p id="login-error" class="hidden text-red-600 text-sm text-center mt-4"></p>
+  <div id="pin-pad-screen" class="hidden">
+    <button id="pin-back-btn" style="margin-bottom:14px;">&larr; Back</button>
+    <p style="text-align:center; font-family:'Oswald',sans-serif; font-size:16px; margin-bottom:16px;" id="pin-operator-name"></p>
+    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;" id="pin-dots"></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;" id="pin-keys"></div>
   </div>
+
+  <p id="login-error" class="hidden" style="color:var(--red); font-size:13px; text-align:center; margin-top:14px;"></p>
 </div>
 
 <!-- ============ MAIN APP ============ -->
-<div id="main-app" class="hidden min-h-screen">
-  <header class="bg-white border-b sticky top-0 z-10">
-    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div>
-        <p class="font-semibold" id="header-name"></p>
-        <p class="text-xs text-slate-500" id="header-role"></p>
+<div id="main-app" class="hidden">
+  <header class="appbar">
+    <div>
+      <p style="font-family:'Oswald',sans-serif; font-weight:600; margin:0;" id="header-name"></p>
+      <p class="readout-empty" style="margin:0; font-size:11px;" id="header-role"></p>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div class="tab-nav" id="tab-switch">
+        <button data-tab="entry" class="tab-btn active">Entry</button>
+        <button data-tab="dashboard" id="dashboard-tab-btn" class="tab-btn hidden">Control Room</button>
       </div>
-      <div class="flex items-center gap-2">
-        <div class="flex bg-slate-100 rounded-lg p-1" id="tab-switch">
-          <button data-tab="entry" class="tab-btn px-3 py-1.5 rounded-md text-sm font-medium">Entry</button>
-          <button data-tab="dashboard" id="dashboard-tab-btn" class="tab-btn px-3 py-1.5 rounded-md text-sm font-medium hidden">Dashboard</button>
-        </div>
-        <button id="logout-btn" class="text-slate-400 text-sm px-2">Exit</button>
-      </div>
+      <button id="logout-btn" style="padding:6px 10px; font-size:11px;">Exit</button>
     </div>
   </header>
 
   <!-- ---------- OPERATOR ENTRY VIEW ---------- -->
-  <main id="entry-view" class="max-w-md mx-auto p-4 space-y-4">
-    <div class="bg-white rounded-xl p-4 shadow-sm space-y-3">
-      <div>
-        <label class="text-xs font-medium text-slate-500">Shift</label>
-        <select id="shift-select" class="w-full mt-1 border rounded-lg p-3 text-base">
+  <main id="entry-view" class="wrap">
+    <div class="panel">
+      <div class="field">
+        <label class="field-label">Shift</label>
+        <select id="shift-select">
           <option>Morning</option>
           <option>Evening</option>
           <option>Night</option>
         </select>
       </div>
 
-      <div class="relative">
-        <label class="text-xs font-medium text-slate-500">Meter</label>
-        <input id="meter-search" autocomplete="off" placeholder="Search meter code or name..."
-          class="w-full mt-1 border rounded-lg p-3 text-base" />
-        <div id="meter-dropdown" class="hidden absolute z-20 w-full bg-white border rounded-lg mt-1 max-h-64 overflow-y-auto shadow-lg"></div>
+      <div class="field" style="position:relative;">
+        <label class="field-label">Meter</label>
+        <input id="meter-search" autocomplete="off" placeholder="Search meter code or name..." />
+        <div id="meter-dropdown" class="hidden meter-dropdown"></div>
       </div>
 
-      <div id="meter-info" class="hidden bg-slate-50 rounded-lg p-3 text-sm space-y-1">
-        <p><span class="text-slate-500">Location:</span> <span id="mi-location"></span></p>
-        <p><span class="text-slate-500">Previous reading:</span>
-          <span id="mi-previous" class="font-semibold"></span> <span id="mi-unit"></span>
+      <div id="meter-info" class="hidden" style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:12px; font-size:13px;">
+        <p style="margin:0 0 4px;"><span class="text-muted" style="color:var(--text-muted);">Location:</span> <span id="mi-location"></span></p>
+        <p style="margin:0;"><span style="color:var(--text-muted);">Previous reading:</span>
+          <span id="mi-previous" style="font-family:'JetBrains Mono',monospace; font-weight:700;"></span> <span id="mi-unit" style="color:var(--text-muted);"></span>
         </p>
       </div>
 
-      <div>
-        <label class="text-xs font-medium text-slate-500">New reading</label>
+      <div class="field">
+        <label class="field-label">New Reading</label>
         <input id="reading-input" type="number" inputmode="decimal" step="any" placeholder="0.00"
-          class="w-full mt-1 border rounded-lg p-4 text-3xl font-semibold text-center tracking-wide" disabled />
+          style="padding:16px; font-size:28px; text-align:center;" disabled />
       </div>
 
-      <div id="consumption-box" class="hidden rounded-lg p-3 text-center">
-        <p class="text-xs text-slate-500">Consumption</p>
-        <p id="consumption-value" class="text-xl font-bold"></p>
-        <p id="consumption-warning" class="hidden text-xs text-red-600 mt-1">
+      <div id="consumption-box" class="hidden" style="border-radius:var(--radius); padding:12px; text-align:center; margin-bottom:12px;">
+        <div class="eyebrow">Consumption</div>
+        <p id="consumption-value" class="hero-number" style="font-size:22px; margin:4px 0 0;"></p>
+        <p id="consumption-warning" class="hidden" style="font-size:12px; color:var(--amber); margin-top:6px;">
           New reading is lower than the previous one — could be a meter reset or replacement. Tap Submit again to confirm.
         </p>
       </div>
 
-      <button id="submit-btn" disabled
-        class="w-full bg-slate-300 text-white font-semibold rounded-lg py-3.5 text-base transition-colors">
-        Submit Reading
-      </button>
+      <button id="submit-btn" disabled class="big">Submit Reading</button>
     </div>
   </main>
 
   <!-- ---------- CONTROL ROOM DASHBOARD VIEW ---------- -->
-  <main id="dashboard-view" class="hidden max-w-6xl mx-auto p-4 space-y-4">
-    <div class="bg-white rounded-xl p-4 shadow-sm">
-      <div class="flex flex-wrap gap-3 items-end">
+  <main id="dashboard-view" class="wrap wide hidden">
+    <div class="panel">
+      <div class="filters">
         <div>
-          <label class="text-xs font-medium text-slate-500 block">Date</label>
-          <input id="filter-date" type="date" class="border rounded-lg p-2 text-sm" />
+          <label>Date</label>
+          <input id="filter-date" type="date" />
         </div>
         <div>
-          <label class="text-xs font-medium text-slate-500 block">Shift</label>
-          <select id="filter-shift" class="border rounded-lg p-2 text-sm">
+          <label>Shift</label>
+          <select id="filter-shift">
             <option value="">All</option>
             <option>Morning</option>
             <option>Evening</option>
@@ -121,53 +168,98 @@
           </select>
         </div>
         <div>
-          <label class="text-xs font-medium text-slate-500 block">Group</label>
-          <select id="filter-group" class="border rounded-lg p-2 text-sm">
-            <option value="">All</option>
-          </select>
+          <label>Group</label>
+          <select id="filter-group"><option value="">All</option></select>
         </div>
-        <div class="flex-1 min-w-[160px]">
-          <label class="text-xs font-medium text-slate-500 block">Search meter</label>
-          <input id="filter-search" placeholder="code or name..." class="border rounded-lg p-2 text-sm w-full" />
+        <div style="flex:1; min-width:160px;">
+          <label>Search meter</label>
+          <input id="filter-search" placeholder="code or name..." />
         </div>
-        <button id="export-btn" class="ml-auto bg-slate-800 text-white text-sm font-medium rounded-lg px-4 py-2.5">
-          Export CSV
-        </button>
+        <button id="export-btn" class="primary" style="margin-left:auto;">Export CSV</button>
       </div>
     </div>
 
-    <div class="bg-white rounded-xl p-4 shadow-sm">
-      <h2 class="font-semibold mb-3">Shift Checklist <span class="text-xs font-normal text-slate-400" id="checklist-summary"></span></h2>
-      <div id="checklist-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"></div>
+    <!-- ---------- ADD METER ---------- -->
+    <div class="panel">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <span class="section-label" style="margin:0;">Add Meter</span>
+        <button id="add-meter-toggle-btn">+ New Meter</button>
+      </div>
+      <form id="add-meter-form" class="hidden">
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Meter Code</label>
+            <input id="am-code" type="text" placeholder="e.g. AMM-COMP-1-KWH" required />
+          </div>
+          <div class="field">
+            <label class="field-label">Name</label>
+            <input id="am-name" type="text" placeholder="e.g. Ammonia Compressor 1 — kWh" required />
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Location</label>
+            <input id="am-location" type="text" placeholder="e.g. Compressor Room" />
+          </div>
+          <div class="field">
+            <label class="field-label">Group</label>
+            <input id="am-group" type="text" list="am-group-options" placeholder="e.g. Refrigeration" />
+            <datalist id="am-group-options"></datalist>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Type</label>
+            <select id="am-type">
+              <option value="energy">Energy (kWh)</option>
+              <option value="hours">Running Hours (hr)</option>
+              <option value="mass">Mass (kg)</option>
+              <option value="volume">Volume (L / KL)</option>
+              <option value="flow">Flow</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label">Unit</label>
+            <input id="am-unit" type="text" placeholder="e.g. kWh" required />
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:4px;">
+          <button type="submit" id="am-submit-btn" class="primary" style="flex:1;">Add Meter</button>
+          <button type="button" id="am-cancel-btn" style="flex:1;">Cancel</button>
+        </div>
+      </form>
+      <p id="add-meter-empty" class="readout-empty">Add a meter and it's available in the reading queue immediately — no deploy needed.</p>
     </div>
 
-    <div class="bg-white rounded-xl p-4 shadow-sm overflow-x-auto">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="font-semibold">Live Readings</h2>
-        <span class="flex items-center gap-1.5 text-xs text-emerald-600">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live
+    <div class="panel">
+      <span class="section-label">Shift Checklist <span class="count" id="checklist-summary"></span></span>
+      <div id="checklist-grid" class="checklist-grid"></div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span class="section-label" style="margin:0;">Live Readings</span>
+        <span style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--green);">
+          <span class="status-dot"></span>Live
         </span>
       </div>
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="text-left text-slate-500 border-b">
-            <th class="py-2 pr-2">Time</th>
-            <th class="py-2 pr-2">Meter</th>
-            <th class="py-2 pr-2">Location</th>
-            <th class="py-2 pr-2">Shift</th>
-            <th class="py-2 pr-2">Reading</th>
-            <th class="py-2 pr-2">Consumption</th>
-            <th class="py-2 pr-2">Operator</th>
-          </tr>
-        </thead>
-        <tbody id="live-table-body"></tbody>
-      </table>
-      <p id="live-table-empty" class="hidden text-center text-slate-400 py-6">No readings for this filter yet.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th><th>Meter</th><th>Location</th><th>Shift</th><th>Reading</th><th>Consumption</th><th>Operator</th>
+            </tr>
+          </thead>
+          <tbody id="live-table-body"></tbody>
+        </table>
+      </div>
+      <p id="live-table-empty" class="hidden readout-empty" style="text-align:center; padding:16px 0;">No readings for this filter yet.</p>
     </div>
   </main>
 </div>
 
-<div id="toast-container" class="fixed bottom-6 left-0 right-0 flex flex-col items-center gap-2 z-50 pointer-events-none"></div>
+<div id="toast-container" style="position:fixed; bottom:20px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:200; pointer-events:none;"></div>
 
 <script>
 // ============================================================
@@ -188,7 +280,6 @@ const state = {
   pendingPin: "",
   pinOperator: null,
   confirmingLowReading: false,
-  dashboardMetersById: {},
   dashboardChannel: null,
 };
 
@@ -197,7 +288,8 @@ const state = {
 // ============================================================
 function toast(msg, kind = "ok") {
   const el = document.createElement("div");
-  el.className = `toast pointer-events-auto px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium text-white ${kind === "ok" ? "bg-emerald-600" : "bg-red-600"}`;
+  el.className = "toast";
+  el.style.cssText = `pointer-events:auto;padding:10px 16px;border-radius:8px;font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:.04em;color:#1B1E21;background:${kind === "ok" ? "#3ECF8E" : "#E5484D"};box-shadow:0 4px 16px rgba(0,0,0,.3);`;
   el.textContent = msg;
   document.getElementById("toast-container").appendChild(el);
   setTimeout(() => el.remove(), 2600);
@@ -232,7 +324,7 @@ async function loadOperatorPicker() {
   if (error) { toast("Could not load operator list", "err"); return; }
   data.forEach(op => {
     const btn = document.createElement("button");
-    btn.className = "bg-white rounded-xl p-4 shadow-sm text-center font-medium hover:bg-slate-50 active:scale-95 transition";
+    btn.style.cssText = "padding:16px; font-family:'Oswald',sans-serif; font-size:13px;";
     btn.textContent = op.name;
     btn.onclick = () => openPinPad(op);
     wrap.appendChild(btn);
@@ -251,9 +343,9 @@ function openPinPad(op) {
   const keys = document.getElementById("pin-keys");
   keys.innerHTML = "";
   ["1","2","3","4","5","6","7","8","9","","0","del"].forEach(k => {
-    const btn = document.createElement("button");
     if (k === "") { keys.appendChild(document.createElement("div")); return; }
-    btn.className = "bg-white rounded-xl py-4 text-xl font-semibold shadow-sm active:scale-95 transition";
+    const btn = document.createElement("button");
+    btn.style.cssText = "padding:16px; font-size:18px;";
     btn.textContent = k === "del" ? "⌫" : k;
     btn.onclick = () => k === "del" ? pinBackspace() : pinDigit(k);
     keys.appendChild(btn);
@@ -343,10 +435,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => setTab(
 function setTab(tab) {
   document.getElementById("entry-view").classList.toggle("hidden", tab !== "entry");
   document.getElementById("dashboard-view").classList.toggle("hidden", tab !== "dashboard");
-  document.querySelectorAll(".tab-btn").forEach(b => {
-    b.classList.toggle("bg-white", b.dataset.tab === tab);
-    b.classList.toggle("shadow-sm", b.dataset.tab === tab);
-  });
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "dashboard") initDashboard();
 }
 
@@ -371,8 +460,8 @@ searchInput.addEventListener("input", () => {
   if (matches.length === 0) { dropdown.classList.add("hidden"); return; }
   matches.forEach(m => {
     const row = document.createElement("div");
-    row.className = "p-3 hover:bg-slate-50 cursor-pointer border-b last:border-0";
-    row.innerHTML = `<p class="font-medium text-sm">${m.meter_code} — ${m.name}</p><p class="text-xs text-slate-400">${m.location || ""}</p>`;
+    row.className = "meter-row";
+    row.innerHTML = `<p class="code">${m.meter_code} — ${m.name}</p><p class="loc">${m.location || ""}</p>`;
     row.onclick = () => selectMeter(m);
     dropdown.appendChild(row);
   });
@@ -412,7 +501,8 @@ function updateConsumption() {
   if (isNaN(val) || !state.selectedMeter) {
     box.classList.add("hidden");
     submitBtn.disabled = true;
-    submitBtn.className = "w-full bg-slate-300 text-white font-semibold rounded-lg py-3.5 text-base";
+    submitBtn.className = "big";
+    submitBtn.textContent = "Submit Reading";
     return;
   }
   const prev = state.previousReading;
@@ -422,11 +512,10 @@ function updateConsumption() {
   const warn = document.getElementById("consumption-warning");
   const isLow = prev !== null && val < prev;
   warn.classList.toggle("hidden", !isLow);
-  box.className = "rounded-lg p-3 text-center " + (isLow ? "bg-red-50" : "bg-emerald-50");
+  box.style.background = isLow ? "var(--red-bg)" : "var(--green-bg)";
   submitBtn.disabled = false;
   submitBtn.textContent = isLow && !state.confirmingLowReading ? "Reading lower than previous — tap to confirm" : "Submit Reading";
-  submitBtn.className = "w-full font-semibold rounded-lg py-3.5 text-base transition-colors text-white " +
-    (isLow && !state.confirmingLowReading ? "bg-amber-500" : "bg-slate-800");
+  submitBtn.className = "big " + (isLow && !state.confirmingLowReading ? "warn" : "primary");
 }
 
 document.getElementById("submit-btn").onclick = async () => {
@@ -472,7 +561,7 @@ document.getElementById("submit-btn").onclick = async () => {
   document.getElementById("consumption-box").classList.add("hidden");
   submitBtn.disabled = true;
   submitBtn.textContent = "Submit Reading";
-  submitBtn.className = "w-full bg-slate-300 text-white font-semibold rounded-lg py-3.5 text-base";
+  submitBtn.className = "big";
   searchInput.focus();
 };
 
@@ -481,10 +570,7 @@ document.getElementById("submit-btn").onclick = async () => {
 // ============================================================
 async function initDashboard() {
   document.getElementById("filter-date").value = todayStr();
-
-  const groups = [...new Set(state.meters.map(m => m.meter_group).filter(Boolean))];
-  const groupSel = document.getElementById("filter-group");
-  groupSel.innerHTML = '<option value="">All</option>' + groups.map(g => `<option>${g}</option>`).join("");
+  refreshGroupOptions();
 
   ["filter-date", "filter-shift", "filter-group", "filter-search"].forEach(id => {
     document.getElementById(id).addEventListener("input", refreshDashboard);
@@ -493,6 +579,15 @@ async function initDashboard() {
 
   await refreshDashboard();
   subscribeRealtime();
+}
+
+function refreshGroupOptions() {
+  const groups = [...new Set(state.meters.map(m => m.meter_group).filter(Boolean))].sort();
+  const groupSel = document.getElementById("filter-group");
+  const current = groupSel.value;
+  groupSel.innerHTML = '<option value="">All</option>' + groups.map(g => `<option>${g}</option>`).join("");
+  if (groups.includes(current)) groupSel.value = current;
+  document.getElementById("am-group-options").innerHTML = groups.map(g => `<option value="${g}">`).join("");
 }
 
 function currentFilters() {
@@ -537,15 +632,14 @@ function renderLiveTable(rows) {
   empty.classList.toggle("hidden", rows.length > 0);
   rows.forEach(r => {
     const tr = document.createElement("tr");
-    tr.className = "border-b last:border-0";
     tr.innerHTML = `
-      <td class="py-2 pr-2 text-slate-500">${fmtTime(r.recorded_at)}</td>
-      <td class="py-2 pr-2 font-medium">${r.meters?.meter_code || ""}</td>
-      <td class="py-2 pr-2">${r.meters?.location || ""}</td>
-      <td class="py-2 pr-2">${r.shift}</td>
-      <td class="py-2 pr-2">${r.reading_value} ${r.meters?.unit || ""}</td>
-      <td class="py-2 pr-2 ${r.consumption < 0 ? "text-red-600" : ""}">${r.consumption}</td>
-      <td class="py-2 pr-2">${r.operators?.name || ""}</td>
+      <td>${fmtTime(r.recorded_at)}</td>
+      <td style="font-weight:700;">${r.meters?.meter_code || ""}</td>
+      <td>${r.meters?.location || ""}</td>
+      <td>${r.shift}</td>
+      <td>${r.reading_value} ${r.meters?.unit || ""}</td>
+      <td style="${r.consumption < 0 ? "color:var(--red);" : ""}">${r.consumption}</td>
+      <td>${r.operators?.name || ""}</td>
     `;
     body.appendChild(tr);
   });
@@ -561,21 +655,79 @@ function renderChecklist(f) {
     const isRead = readMeterIds.has(m.meter_code);
     if (isRead) readCount++;
     const card = document.createElement("div");
-    card.className = `rounded-lg p-3 border ${isRead ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"}`;
+    card.className = "check-card" + (isRead ? " read" : "");
     card.innerHTML = `
-      <p class="text-sm font-medium">${m.meter_code}</p>
-      <p class="text-xs text-slate-500 truncate">${m.name}</p>
-      <p class="text-xs mt-1 ${isRead ? "text-emerald-600" : "text-slate-400"}">${isRead ? "✓ Read" : "Pending"}</p>
+      <p class="check-name">${m.meter_code}</p>
+      <p class="check-sub">${m.name}</p>
+      <p class="check-status" style="color:${isRead ? "var(--green)" : "var(--text-muted)"};">${isRead ? "✓ Read" : "Pending"}</p>
     `;
     grid.appendChild(card);
   });
   document.getElementById("checklist-summary").textContent = `${readCount} / ${visibleMeters.length} read`;
 }
 
+// ---------- Add Meter ----------
+const addMeterForm = document.getElementById("add-meter-form");
+const addMeterToggleBtn = document.getElementById("add-meter-toggle-btn");
+const addMeterEmpty = document.getElementById("add-meter-empty");
+
+addMeterToggleBtn.onclick = () => {
+  const opening = addMeterForm.classList.contains("hidden");
+  addMeterForm.classList.toggle("hidden", !opening);
+  addMeterEmpty.classList.toggle("hidden", opening);
+  addMeterToggleBtn.textContent = opening ? "Cancel" : "+ New Meter";
+  if (opening) document.getElementById("am-code").focus();
+};
+document.getElementById("am-cancel-btn").onclick = () => addMeterToggleBtn.click();
+
+document.getElementById("am-type").addEventListener("change", (e) => {
+  const defaults = { energy: "kWh", hours: "hr", mass: "kg", volume: "KL", flow: "m3/hr", other: "" };
+  const unitField = document.getElementById("am-unit");
+  if (!unitField.value || Object.values(defaults).includes(unitField.value)) {
+    unitField.value = defaults[e.target.value] || "";
+  }
+});
+
+addMeterForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = document.getElementById("am-code").value.trim().toUpperCase();
+  const name = document.getElementById("am-name").value.trim();
+  const location = document.getElementById("am-location").value.trim() || null;
+  const group = document.getElementById("am-group").value.trim() || null;
+  const type = document.getElementById("am-type").value;
+  const unit = document.getElementById("am-unit").value.trim();
+
+  if (!code || !name || !unit) { toast("Meter code, name and unit are required", "err"); return; }
+
+  const btn = document.getElementById("am-submit-btn");
+  btn.disabled = true; btn.textContent = "Adding...";
+
+  const { error } = await sb.from("meters").insert({
+    meter_code: code, name, location, meter_group: group, type, unit, active: true,
+  });
+
+  btn.disabled = false; btn.textContent = "Add Meter";
+
+  if (error) { toast("Failed: " + error.message, "err"); return; }
+
+  toast(`Added ✓ ${code} — live in tomorrow's queue`);
+  addMeterForm.reset();
+  document.getElementById("am-unit").value = "kWh";
+  addMeterToggleBtn.click();
+  await loadMeters();
+  refreshGroupOptions();
+  await refreshDashboard();
+});
+
 function subscribeRealtime() {
   if (state.dashboardChannel) return;
   state.dashboardChannel = sb.channel("meter_readings_live")
     .on("postgres_changes", { event: "*", schema: "public", table: "meter_readings" }, () => {
+      refreshDashboard();
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "meters" }, async () => {
+      await loadMeters();
+      refreshGroupOptions();
       refreshDashboard();
     })
     .subscribe();
