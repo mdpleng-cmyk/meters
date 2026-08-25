@@ -320,18 +320,44 @@
       <span id="rm-location"></span> &middot;
       Previous: <span id="rm-previous" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--text);"></span> <span id="rm-unit"></span>
     </p>
-    <input id="rm-reading-input" type="number" inputmode="decimal" step="any" placeholder="0.00"
-      style="padding:16px; font-size:28px; text-align:center; margin-bottom:12px;" />
-    <div id="rm-consumption-box" class="hidden" style="border-radius:var(--radius); padding:12px; text-align:center; margin-bottom:12px;">
-      <div class="eyebrow">Consumption</div>
-      <p id="rm-consumption-value" class="hero-number" style="font-size:20px; margin:4px 0 0;"></p>
-      <p id="rm-consumption-warning" class="hidden" style="font-size:12px; color:var(--amber); margin-top:6px;">
-        Lower than previous — could be a reset or replacement. Tap again to confirm.
-      </p>
+
+    <!-- ENTRY VIEW -->
+    <div id="rm-entry-view">
+      <input id="rm-reading-input" type="number" inputmode="decimal" step="any" placeholder="0.00"
+        style="padding:16px; font-size:28px; text-align:center; margin-bottom:12px;" />
+      <div id="rm-consumption-box" class="hidden" style="border-radius:var(--radius); padding:12px; text-align:center; margin-bottom:12px;">
+        <div class="eyebrow">Est. Consumption</div>
+        <p id="rm-consumption-value" class="hero-number" style="font-size:20px; margin:4px 0 0;"></p>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button id="rm-review-btn" class="primary big" style="flex:1;">Review</button>
+        <button id="rm-cancel-btn" style="flex:1;">Cancel</button>
+      </div>
     </div>
-    <div style="display:flex; gap:8px;">
-      <button id="rm-submit-btn" class="primary big" style="flex:1;">Submit Reading</button>
-      <button id="rm-cancel-btn" style="flex:1;">Cancel</button>
+
+    <!-- CONFIRMATION VIEW -->
+    <div id="rm-confirm-view" class="hidden">
+      <div style="background:var(--panel-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+          <span class="readout-empty">Entered Reading</span>
+          <span id="rm-c-reading" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--text);"></span>
+        </div>
+        <div id="rm-c-consumption-row" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+          <span class="readout-empty">Consumption</span>
+          <span id="rm-c-consumption" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--amber);"></span>
+        </div>
+        <div id="rm-c-cost-row" style="display:flex; justify-content:space-between; border-top:1px solid var(--border); padding-top:12px;">
+          <span class="readout-empty">Est. Cost (₹8.50/unit)</span>
+          <span id="rm-c-cost" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--green);"></span>
+        </div>
+      </div>
+      <p id="rm-c-warning" class="hidden" style="font-size:12px; color:var(--amber); margin-bottom:12px; text-align:center;">
+        ⚠️ Reading is lower than previous. Save only if meter was reset.
+      </p>
+      <div style="display:flex; gap:8px;">
+        <button id="rm-save-btn" class="primary big" style="flex:1;">Confirm & Save</button>
+        <button id="rm-edit-btn" style="flex:1; padding:16px; font-size:15px;">Edit</button>
+      </div>
     </div>
   </div>
 </div>
@@ -592,9 +618,10 @@ async function refreshTileGrid() {
   document.getElementById("tile-progress-fill").style.width = `${Math.round((doneCount / tileMeters.length) * 100)}%`;
 }
 
+const UNIT_COST = 8.50; // Monetary conversion rate for estimated cost should we add this as a configurable item ?????
+
 async function openTileModal(m) {
   state.tileModalMeter = m;
-  state.tileModalConfirmLow = false;
 
   const { data } = await sb.from("latest_meter_readings").select("reading_value").eq("meter_id", m.id).maybeSingle();
   state.tileModalPrevious = data ? Number(data.reading_value) : null;
@@ -605,42 +632,40 @@ async function openTileModal(m) {
   document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
   document.getElementById("rm-unit").textContent = m.unit;
 
+  // Reset to Entry View
+  document.getElementById("rm-entry-view").classList.remove("hidden");
+  document.getElementById("rm-confirm-view").classList.add("hidden");
+  
   const input = document.getElementById("rm-reading-input");
   input.value = "";
   document.getElementById("rm-consumption-box").classList.add("hidden");
-  updateTileModalButton();
+  updateReviewButton();
+  
   document.getElementById("round-modal").classList.add("open");
   input.focus();
 }
 
-document.getElementById("rm-reading-input").addEventListener("input", () => {
-  state.tileModalConfirmLow = false;
-  updateTileModalConsumption();
-});
+document.getElementById("rm-reading-input").addEventListener("input", updateTileModalConsumption);
 
 function updateTileModalConsumption() {
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const box = document.getElementById("rm-consumption-box");
-  if (isNaN(val)) { box.classList.add("hidden"); updateTileModalButton(); return; }
+  if (isNaN(val)) { box.classList.add("hidden"); updateReviewButton(); return; }
+  
   const prev = state.tileModalPrevious;
-  const consumption = prev !== null ? val - prev : 0;
-  box.classList.remove("hidden");
-  document.getElementById("rm-consumption-value").textContent = `${consumption.toFixed(2)} ${state.tileModalMeter.unit}`;
-  const isLow = prev !== null && val < prev;
-  document.getElementById("rm-consumption-warning").classList.toggle("hidden", !isLow);
-  box.style.background = isLow ? "var(--red-bg)" : "var(--green-bg)";
-  updateTileModalButton();
+  if (prev !== null) {
+    const consumption = val - prev;
+    box.classList.remove("hidden");
+    document.getElementById("rm-consumption-value").textContent = `${consumption.toFixed(2)} ${state.tileModalMeter.unit}`;
+    box.style.background = consumption < 0 ? "var(--red-bg)" : "var(--green-bg)";
+  }
+  updateReviewButton();
 }
 
-function updateTileModalButton() {
+function updateReviewButton() {
   const val = parseFloat(document.getElementById("rm-reading-input").value);
-  const btn = document.getElementById("rm-submit-btn");
-  if (isNaN(val)) { btn.disabled = true; btn.textContent = "Submit Reading"; btn.className = "big primary"; return; }
-  const prev = state.tileModalPrevious;
-  const isLow = prev !== null && val < prev;
-  btn.disabled = false;
-  btn.textContent = isLow && !state.tileModalConfirmLow ? "Lower than previous — tap to confirm" : "Submit Reading";
-  btn.className = "big " + (isLow && !state.tileModalConfirmLow ? "warn" : "primary");
+  const btn = document.getElementById("rm-review-btn");
+  btn.disabled = isNaN(val);
 }
 
 document.getElementById("rm-cancel-btn").onclick = () => {
@@ -648,20 +673,63 @@ document.getElementById("rm-cancel-btn").onclick = () => {
   state.tileModalMeter = null;
 };
 
-document.getElementById("rm-submit-btn").onclick = async () => {
+// Transition to Confirmation Screen
+document.getElementById("rm-review-btn").onclick = () => {
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const m = state.tileModalMeter;
   if (isNaN(val) || !m) return;
+
+  const prev = state.tileModalPrevious;
+  const consumption = prev !== null ? val - prev : null;
+  const isLow = prev !== null && val < prev;
+
+  // Populate confirmation screen
+  document.getElementById("rm-c-reading").textContent = `${val} ${m.unit}`;
+  
+  const consRow = document.getElementById("rm-c-consumption-row");
+  const costRow = document.getElementById("rm-c-cost-row");
+  const warning = document.getElementById("rm-c-warning");
+
+  if (consumption !== null) {
+    consRow.classList.remove("hidden");
+    document.getElementById("rm-c-consumption").textContent = `${consumption.toFixed(2)} ${m.unit}`;
+    
+    // Only show cost if consumption is positive
+    if (consumption >= 0) {
+      costRow.classList.remove("hidden");
+      const cost = consumption * UNIT_COST;
+      document.getElementById("rm-c-cost").textContent = `₹${cost.toFixed(2)}`;
+    } else {
+      costRow.classList.add("hidden");
+    }
+  } else {
+    consRow.classList.add("hidden");
+    costRow.classList.add("hidden");
+  }
+
+  warning.classList.toggle("hidden", !isLow);
+  document.getElementById("rm-save-btn").className = "big " + (isLow ? "warn" : "primary");
+
+  // Switch views
+  document.getElementById("rm-entry-view").classList.add("hidden");
+  document.getElementById("rm-confirm-view").classList.remove("hidden");
+};
+
+// Edit button goes back to entry view
+document.getElementById("rm-edit-btn").onclick = () => {
+  document.getElementById("rm-confirm-view").classList.add("hidden");
+  document.getElementById("rm-entry-view").classList.remove("hidden");
+  document.getElementById("rm-reading-input").focus();
+};
+
+// Final Save
+document.getElementById("rm-save-btn").onclick = async () => {
+  const val = parseFloat(document.getElementById("rm-reading-input").value);
+  const m = state.tileModalMeter;
   const prev = state.tileModalPrevious;
   const isLow = prev !== null && val < prev;
 
-  if (isLow && !state.tileModalConfirmLow) {
-    state.tileModalConfirmLow = true;
-    updateTileModalButton();
-    return;
-  }
-
-  const btn = document.getElementById("rm-submit-btn");
+  const btn = document.getElementById("rm-save-btn");
   btn.disabled = true; btn.textContent = "Saving...";
 
   const { error } = await sb.from("meter_readings").insert({
@@ -673,7 +741,7 @@ document.getElementById("rm-submit-btn").onclick = async () => {
     notes: isLow ? "possible reset/replacement — confirmed by operator" : null,
   });
 
-  btn.disabled = false; btn.textContent = "Submit Reading";
+  btn.disabled = false; btn.textContent = "Confirm & Save";
 
   if (error) { toast("Save failed: " + error.message, "err"); return; }
 
