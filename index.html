@@ -214,12 +214,18 @@
             <input id="am-unit" type="text" placeholder="e.g. kWh" required />
           </div>
         </div>
-        <div class="field">
-          <label class="field-label">Reading Mode</label>
-          <select id="am-reading-mode">
-            <option value="shift_wise">Shift-wise (utility operators, per shift)</option>
-            <option value="daily_round">Daily round (6 AM plant-wide walk)</option>
-          </select>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Reading Mode</label>
+            <select id="am-reading-mode">
+              <option value="shift_wise">Shift-wise (utility operators, per shift)</option>
+              <option value="daily_round">Daily round (6 AM plant-wide walk)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label">Cost per Unit (₹) — optional</label>
+            <input id="am-cost" type="number" step="any" placeholder="e.g. 8.50" />
+          </div>
         </div>
         <div style="display:flex; gap:8px; margin-top:4px;">
           <button type="submit" id="am-submit-btn" class="primary" style="flex:1;">Add Meter</button>
@@ -346,8 +352,8 @@
           <span class="readout-empty">Consumption</span>
           <span id="rm-c-consumption" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--amber);"></span>
         </div>
-        <div id="rm-c-cost-row" style="display:flex; justify-content:space-between; border-top:1px solid var(--border); padding-top:12px;">
-          <span class="readout-empty">Est. Cost (₹8.50/unit)</span>
+        <div id="rm-c-cost-row" class="hidden" style="display:flex; justify-content:space-between; border-top:1px solid var(--border); padding-top:12px;">
+          <span class="readout-empty" id="rm-c-cost-label">Est. Cost</span>
           <span id="rm-c-cost" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--green);"></span>
         </div>
       </div>
@@ -384,7 +390,6 @@ const state = {
   tileReadIds: new Set(),   // meter_ids already read for the current tile view/shift
   tileModalMeter: null,
   tileModalPrevious: null,
-  tileModalConfirmLow: false,
 };
 
 // ============================================================
@@ -618,8 +623,6 @@ async function refreshTileGrid() {
   document.getElementById("tile-progress-fill").style.width = `${Math.round((doneCount / tileMeters.length) * 100)}%`;
 }
 
-const UNIT_COST = 8.50; // Monetary conversion rate for estimated cost should we add this as a configurable item ?????
-
 async function openTileModal(m) {
   state.tileModalMeter = m;
 
@@ -635,12 +638,12 @@ async function openTileModal(m) {
   // Reset to Entry View
   document.getElementById("rm-entry-view").classList.remove("hidden");
   document.getElementById("rm-confirm-view").classList.add("hidden");
-  
+
   const input = document.getElementById("rm-reading-input");
   input.value = "";
   document.getElementById("rm-consumption-box").classList.add("hidden");
   updateReviewButton();
-  
+
   document.getElementById("round-modal").classList.add("open");
   input.focus();
 }
@@ -651,7 +654,7 @@ function updateTileModalConsumption() {
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const box = document.getElementById("rm-consumption-box");
   if (isNaN(val)) { box.classList.add("hidden"); updateReviewButton(); return; }
-  
+
   const prev = state.tileModalPrevious;
   if (prev !== null) {
     const consumption = val - prev;
@@ -685,7 +688,7 @@ document.getElementById("rm-review-btn").onclick = () => {
 
   // Populate confirmation screen
   document.getElementById("rm-c-reading").textContent = `${val} ${m.unit}`;
-  
+
   const consRow = document.getElementById("rm-c-consumption-row");
   const costRow = document.getElementById("rm-c-cost-row");
   const warning = document.getElementById("rm-c-warning");
@@ -693,11 +696,12 @@ document.getElementById("rm-review-btn").onclick = () => {
   if (consumption !== null) {
     consRow.classList.remove("hidden");
     document.getElementById("rm-c-consumption").textContent = `${consumption.toFixed(2)} ${m.unit}`;
-    
-    // Only show cost if consumption is positive
-    if (consumption >= 0) {
+
+    // Cost only shown if this meter has a per-unit rate set AND consumption is non-negative
+    if (consumption >= 0 && typeof m.cost_per_unit === "number") {
       costRow.classList.remove("hidden");
-      const cost = consumption * UNIT_COST;
+      document.getElementById("rm-c-cost-label").textContent = `Est. Cost (₹${m.cost_per_unit}/${m.unit})`;
+      const cost = consumption * m.cost_per_unit;
       document.getElementById("rm-c-cost").textContent = `₹${cost.toFixed(2)}`;
     } else {
       costRow.classList.add("hidden");
@@ -901,6 +905,8 @@ addMeterForm.addEventListener("submit", async (e) => {
   const type = document.getElementById("am-type").value;
   const unit = document.getElementById("am-unit").value.trim();
   const readingMode = document.getElementById("am-reading-mode").value;
+  const costRaw = document.getElementById("am-cost").value.trim();
+  const costPerUnit = costRaw === "" ? null : parseFloat(costRaw);
 
   if (!code || !name || !unit) { toast("Meter code, name and unit are required", "err"); return; }
 
@@ -908,7 +914,8 @@ addMeterForm.addEventListener("submit", async (e) => {
   btn.disabled = true; btn.textContent = "Adding...";
 
   const { error } = await sb.from("meters").insert({
-    meter_code: code, name, location, meter_group: group, meter_type: type, unit, active: true, reading_mode: readingMode,
+    meter_code: code, name, location, meter_group: group, meter_type: type, unit, active: true,
+    reading_mode: readingMode, cost_per_unit: costPerUnit,
   });
 
   btn.disabled = false; btn.textContent = "Add Meter";
