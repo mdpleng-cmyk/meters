@@ -204,8 +204,8 @@
       </div>
     </div>
 
-    <!-- ---------- ADD METER ---------- -->
-    <div class="panel">
+    <!-- ---------- ADD METER (Admin only) ---------- -->
+    <div id="add-meter-panel" class="panel hidden">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <span class="section-label" style="margin:0;">Add Meter</span>
         <button id="add-meter-toggle-btn">+ New Meter</button>
@@ -330,7 +330,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // STATE
 // ============================================================
 const state = {
-  operator: null,        // { id, code, name, role, operator_type }
+  operator: null,        // { id, code, name, level }
   meters: [],
   selectedMeter: null,
   previousReading: null,
@@ -459,7 +459,7 @@ async function attemptLogin() {
 async function loadOperatorProfile() {
   const { data: userData } = await sb.auth.getUser();
   if (!userData?.user) return false;
-  const { data, error } = await sb.from("operators").select("id,code,name,role,operator_type").eq("id", userData.user.id).single();
+  const { data, error } = await sb.from("operators").select("id,code,name,level").eq("id", userData.user.id).single();
   if (error || !data) { toast("Profile not found for this login", "err"); await sb.auth.signOut(); return false; }
   state.operator = data;
   return true;
@@ -480,28 +480,33 @@ document.getElementById("logout-btn").onclick = async () => {
 // ============================================================
 // MAIN APP SHELL
 // ============================================================
-function isRoundOperator() { return state.operator?.operator_type === "round"; }
+const LEVEL_LABELS = {
+  apprentice: "Apprentice", operator: "Operator", utility_operator: "Utility Operator",
+  control_room: "Control Room", admin: "Admin",
+};
+function isRoundLevel() { return ["apprentice", "operator"].includes(state.operator?.level); }
+function isUtilityLevel() { return state.operator?.level === "utility_operator"; }
+function isControlRoomOrAdmin() { return ["control_room", "admin"].includes(state.operator?.level); }
+function isAdmin() { return state.operator?.level === "admin"; }
 
 async function showMainApp() {
   document.getElementById("login-screen").classList.add("hidden");
   document.getElementById("main-app").classList.remove("hidden");
   document.getElementById("header-name").textContent = state.operator.name;
-  document.getElementById("header-role").textContent = state.operator.role === "control_room" ? "Control Room" :
-    (isRoundOperator() ? "Round Operator" : "Utility Operator");
-  document.getElementById("entry-tab-btn").textContent = isRoundOperator() ? "Round" : "Entry";
-  if (state.operator.role === "control_room") {
-    document.getElementById("dashboard-tab-btn").classList.remove("hidden");
-  }
+  document.getElementById("header-role").textContent = LEVEL_LABELS[state.operator.level] || state.operator.level;
+  document.getElementById("entry-tab-btn").textContent = isRoundLevel() ? "Round" : "Entry";
+  document.getElementById("entry-tab-btn").classList.toggle("hidden", isControlRoomOrAdmin());
+  if (isControlRoomOrAdmin()) document.getElementById("dashboard-tab-btn").classList.remove("hidden");
   document.getElementById("shift-select").value = defaultShift();
   await loadMeters();
-  setTab("entry");
+  setTab(isControlRoomOrAdmin() ? "dashboard" : "entry");
   subscribeLiveChannel();
 }
 
 document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => setTab(btn.dataset.tab));
 function setTab(tab) {
-  const showRound = tab === "entry" && isRoundOperator();
-  const showEntry = tab === "entry" && !isRoundOperator();
+  const showRound = tab === "entry" && isRoundLevel();
+  const showEntry = tab === "entry" && isUtilityLevel();
   document.getElementById("entry-view").classList.toggle("hidden", !showEntry);
   document.getElementById("round-view").classList.toggle("hidden", !showRound);
   document.getElementById("dashboard-view").classList.toggle("hidden", tab !== "dashboard");
@@ -790,6 +795,7 @@ function subscribeLiveChannel() {
 // CONTROL ROOM DASHBOARD
 // ============================================================
 async function initDashboard() {
+  document.getElementById("add-meter-panel").classList.toggle("hidden", !isAdmin());
   document.getElementById("filter-date").value = todayStr();
   refreshGroupOptions();
 
