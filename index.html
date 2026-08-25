@@ -119,59 +119,24 @@
     </div>
   </header>
 
-  <!-- ---------- OPERATOR ENTRY VIEW ---------- -->
-  <main id="entry-view" class="wrap">
+  <!-- ---------- TILE VIEW (all reading-taking levels) ---------- -->
+  <main id="tile-view" class="wrap">
     <div class="panel">
-      <div class="field">
+      <div id="tile-shift-field" class="field hidden">
         <label class="field-label">Shift</label>
-        <select id="shift-select">
+        <select id="tile-shift-select">
           <option>Morning</option>
           <option>Evening</option>
           <option>Night</option>
         </select>
       </div>
-
-      <div class="field" style="position:relative;">
-        <label class="field-label">Meter</label>
-        <input id="meter-search" autocomplete="off" placeholder="Search meter code or name..." />
-        <div id="meter-dropdown" class="hidden meter-dropdown"></div>
-      </div>
-
-      <div id="meter-info" class="hidden" style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:12px; font-size:13px;">
-        <p style="margin:0 0 4px;"><span class="text-muted" style="color:var(--text-muted);">Location:</span> <span id="mi-location"></span></p>
-        <p style="margin:0;"><span style="color:var(--text-muted);">Previous reading:</span>
-          <span id="mi-previous" style="font-family:'JetBrains Mono',monospace; font-weight:700;"></span> <span id="mi-unit" style="color:var(--text-muted);"></span>
-        </p>
-      </div>
-
-      <div class="field">
-        <label class="field-label">New Reading</label>
-        <input id="reading-input" type="number" inputmode="decimal" step="any" placeholder="0.00"
-          style="padding:16px; font-size:28px; text-align:center;" disabled />
-      </div>
-
-      <div id="consumption-box" class="hidden" style="border-radius:var(--radius); padding:12px; text-align:center; margin-bottom:12px;">
-        <div class="eyebrow">Consumption</div>
-        <p id="consumption-value" class="hero-number" style="font-size:22px; margin:4px 0 0;"></p>
-        <p id="consumption-warning" class="hidden" style="font-size:12px; color:var(--amber); margin-top:6px;">
-          New reading is lower than the previous one — could be a meter reset or replacement. Tap Submit again to confirm.
-        </p>
-      </div>
-
-      <button id="submit-btn" disabled class="big">Submit Reading</button>
-    </div>
-  </main>
-
-  <!-- ---------- ROUND VIEW (Type 1 operators) ---------- -->
-  <main id="round-view" class="wrap hidden">
-    <div class="panel">
-      <span class="section-label" style="margin:0;">Today's Round</span>
+      <span class="section-label" style="margin:0;" id="tile-title">Today's Round</span>
       <p class="readout-empty" style="margin-top:4px;">Tap a meter, add its reading. Done ones turn green.</p>
-      <div class="progress-track"><div class="progress-fill" id="round-progress-fill" style="width:0%;"></div></div>
-      <p class="readout-empty" style="margin-top:6px;" id="round-progress-text">0 / 0 read</p>
+      <div class="progress-track"><div class="progress-fill" id="tile-progress-fill" style="width:0%;"></div></div>
+      <p class="readout-empty" style="margin-top:6px;" id="tile-progress-text">0 / 0 read</p>
     </div>
-    <div id="round-grid" class="round-grid"></div>
-    <p id="round-empty" class="readout-empty hidden" style="text-align:center; padding:20px 0;">No daily-round meters set up yet — ask Control Room to add one.</p>
+    <div id="tile-grid" class="round-grid"></div>
+    <p id="tile-empty" class="readout-empty hidden" style="text-align:center; padding:20px 0;">No meters set up for this yet — ask an Admin to add one.</p>
   </main>
 
   <!-- ---------- CONTROL ROOM DASHBOARD VIEW ---------- -->
@@ -264,6 +229,61 @@
       <p id="add-meter-empty" class="readout-empty">Add a meter and it's available in the reading queue immediately — no deploy needed.</p>
     </div>
 
+    <!-- ---------- ADD OPERATOR (Admin only) — helper, not automatic ---------- -->
+    <div id="add-operator-panel" class="panel hidden">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+        <span class="section-label" style="margin:0;">Add Operator</span>
+      </div>
+      <p class="readout-empty" style="margin-bottom:12px;">
+        Accounts can't be created from this app (would need exposing a secret key). Fill this in, then follow the two steps it generates below in the Supabase dashboard.
+      </p>
+      <div class="grid2">
+        <div class="field">
+          <label class="field-label">Name</label>
+          <input id="ao-name" type="text" placeholder="e.g. Ravi Kumar" />
+        </div>
+        <div class="field">
+          <label class="field-label">Code</label>
+          <input id="ao-code" type="text" placeholder="e.g. ravi" />
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label class="field-label">Level</label>
+          <select id="ao-level">
+            <option value="apprentice">Apprentice</option>
+            <option value="operator" selected>Operator (daily round)</option>
+            <option value="utility_operator">Utility Operator (shift-wise)</option>
+            <option value="control_room">Control Room</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">PIN (4 digits)</label>
+          <div style="display:flex; gap:6px;">
+            <input id="ao-pin" type="text" inputmode="numeric" maxlength="4" placeholder="1234" style="flex:1;" />
+            <button type="button" id="ao-pin-random-btn" style="white-space:nowrap;">Random</button>
+          </div>
+        </div>
+      </div>
+      <div id="ao-output" class="hidden" style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-top:6px; font-size:12px; line-height:1.7;">
+        <div class="eyebrow" style="margin-bottom:6px;">Step 1 — Authentication → Users → Add user</div>
+        <div>Email: <span id="ao-out-email" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
+        <div>Password: <span id="ao-out-pin" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
+        <div>Auto Confirm User: <span style="color:var(--amber);">ON</span></div>
+        <div class="eyebrow" style="margin:10px 0 6px;">Step 2 — Table Editor → operators → Insert row</div>
+        <div>id: <span style="color:var(--text-muted);">paste the UID from Step 1</span></div>
+        <div>code: <span id="ao-out-code" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
+        <div>name: <span id="ao-out-name" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
+        <div>level: <span id="ao-out-level" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
+        <div>active: <span style="color:var(--amber);">true</span></div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button type="button" id="ao-generate-btn" class="primary" style="flex:1;">Generate Steps</button>
+        <button type="button" id="ao-copy-btn" class="hidden" style="flex:1;">Copy Details</button>
+      </div>
+    </div>
+
     <div class="panel">
       <span class="section-label">Shift Checklist <span class="count" id="checklist-summary"></span></span>
       <div id="checklist-grid" class="checklist-grid"></div>
@@ -332,17 +352,13 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const state = {
   operator: null,        // { id, code, name, level }
   meters: [],
-  selectedMeter: null,
-  previousReading: null,
   pendingPin: "",
   pinOperator: null,
-  confirmingLowReading: false,
-  dashboardChannel: null,
   liveChannel: null,
-  roundReadIds: new Set(),   // meter_ids already read in today's round
-  roundModalMeter: null,
-  roundModalPrevious: null,
-  roundModalConfirmLow: false,
+  tileReadIds: new Set(),   // meter_ids already read for the current tile view/shift
+  tileModalMeter: null,
+  tileModalPrevious: null,
+  tileModalConfirmLow: false,
 };
 
 // ============================================================
@@ -494,10 +510,10 @@ async function showMainApp() {
   document.getElementById("main-app").classList.remove("hidden");
   document.getElementById("header-name").textContent = state.operator.name;
   document.getElementById("header-role").textContent = LEVEL_LABELS[state.operator.level] || state.operator.level;
-  document.getElementById("entry-tab-btn").textContent = isRoundLevel() ? "Round" : "Entry";
+  document.getElementById("entry-tab-btn").textContent = isUtilityLevel() ? "Shift" : "Round";
   document.getElementById("entry-tab-btn").classList.toggle("hidden", isControlRoomOrAdmin());
   if (isControlRoomOrAdmin()) document.getElementById("dashboard-tab-btn").classList.remove("hidden");
-  document.getElementById("shift-select").value = defaultShift();
+  document.getElementById("tile-shift-select").value = defaultShift();
   await loadMeters();
   setTab(isControlRoomOrAdmin() ? "dashboard" : "entry");
   subscribeLiveChannel();
@@ -505,18 +521,19 @@ async function showMainApp() {
 
 document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => setTab(btn.dataset.tab));
 function setTab(tab) {
-  const showRound = tab === "entry" && isRoundLevel();
-  const showEntry = tab === "entry" && isUtilityLevel();
-  document.getElementById("entry-view").classList.toggle("hidden", !showEntry);
-  document.getElementById("round-view").classList.toggle("hidden", !showRound);
+  const showTile = tab === "entry" && (isRoundLevel() || isUtilityLevel());
+  document.getElementById("tile-view").classList.toggle("hidden", !showTile);
   document.getElementById("dashboard-view").classList.toggle("hidden", tab !== "dashboard");
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "dashboard") initDashboard();
-  if (showRound) refreshRoundGrid();
+  if (showTile) refreshTileGrid();
 }
 
 // ============================================================
-// OPERATOR ENTRY
+// TILE VIEW — used by every reading-taking level (Apprentice,
+// Operator, Utility Operator). Round levels: one flat list, done
+// = read today. Utility level: same tiles but scoped to shift_wise
+// meters, done = read for the currently-selected shift.
 // ============================================================
 async function loadMeters() {
   const { data, error } = await sb.from("meters").select("*").eq("active", true).order("meter_code");
@@ -524,148 +541,40 @@ async function loadMeters() {
   state.meters = data;
 }
 
-const searchInput = document.getElementById("meter-search");
-const dropdown = document.getElementById("meter-dropdown");
-searchInput.addEventListener("input", () => {
-  const q = searchInput.value.trim().toLowerCase();
-  if (!q) { dropdown.classList.add("hidden"); return; }
-  const matches = state.meters.filter(m =>
-    m.reading_mode !== "daily_round" &&
-    (m.meter_code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
-  ).slice(0, 8);
-  dropdown.innerHTML = "";
-  if (matches.length === 0) { dropdown.classList.add("hidden"); return; }
-  matches.forEach(m => {
-    const row = document.createElement("div");
-    row.className = "meter-row";
-    row.innerHTML = `<p class="code">${m.meter_code} — ${m.name}</p><p class="loc">${m.location || ""}</p>`;
-    row.onclick = () => selectMeter(m);
-    dropdown.appendChild(row);
-  });
-  dropdown.classList.remove("hidden");
-});
-document.addEventListener("click", (e) => {
-  if (!e.target.closest("#meter-search") && !e.target.closest("#meter-dropdown")) dropdown.classList.add("hidden");
-});
+document.getElementById("tile-shift-select").addEventListener("change", refreshTileGrid);
 
-async function selectMeter(m) {
-  state.selectedMeter = m;
-  searchInput.value = `${m.meter_code} — ${m.name}`;
-  dropdown.classList.add("hidden");
-
-  const { data } = await sb.from("latest_meter_readings").select("reading_value").eq("meter_id", m.id).maybeSingle();
-  state.previousReading = data ? Number(data.reading_value) : null;
-
-  document.getElementById("meter-info").classList.remove("hidden");
-  document.getElementById("mi-location").textContent = m.location || "—";
-  document.getElementById("mi-previous").textContent = state.previousReading !== null ? state.previousReading : "No prior reading";
-  document.getElementById("mi-unit").textContent = m.unit;
-
-  const input = document.getElementById("reading-input");
-  input.disabled = false;
-  input.value = "";
-  input.focus();
-  updateConsumption();
+function currentTileShiftTag() {
+  return isUtilityLevel() ? document.getElementById("tile-shift-select").value : "Round";
 }
 
-const readingInput = document.getElementById("reading-input");
-readingInput.addEventListener("input", () => { state.confirmingLowReading = false; updateConsumption(); });
+async function refreshTileGrid() {
+  const isUtility = isUtilityLevel();
+  document.getElementById("tile-shift-field").classList.toggle("hidden", !isUtility);
+  document.getElementById("tile-title").textContent = isUtility
+    ? `${document.getElementById("tile-shift-select").value} Shift Readings`
+    : "Today's Round";
 
-function updateConsumption() {
-  const box = document.getElementById("consumption-box");
-  const submitBtn = document.getElementById("submit-btn");
-  const val = parseFloat(readingInput.value);
-  if (isNaN(val) || !state.selectedMeter) {
-    box.classList.add("hidden");
-    submitBtn.disabled = true;
-    submitBtn.className = "big";
-    submitBtn.textContent = "Submit Reading";
-    return;
-  }
-  const prev = state.previousReading;
-  const consumption = prev !== null ? val - prev : 0;
-  box.classList.remove("hidden");
-  document.getElementById("consumption-value").textContent = `${consumption.toFixed(2)} ${state.selectedMeter.unit}`;
-  const warn = document.getElementById("consumption-warning");
-  const isLow = prev !== null && val < prev;
-  warn.classList.toggle("hidden", !isLow);
-  box.style.background = isLow ? "var(--red-bg)" : "var(--green-bg)";
-  submitBtn.disabled = false;
-  submitBtn.textContent = isLow && !state.confirmingLowReading ? "Reading lower than previous — tap to confirm" : "Submit Reading";
-  submitBtn.className = "big " + (isLow && !state.confirmingLowReading ? "warn" : "primary");
-}
+  const tileMeters = state.meters.filter(m => m.reading_mode === (isUtility ? "shift_wise" : "daily_round"));
+  const grid = document.getElementById("tile-grid");
+  const emptyMsg = document.getElementById("tile-empty");
 
-document.getElementById("submit-btn").onclick = async () => {
-  const val = parseFloat(readingInput.value);
-  if (isNaN(val) || !state.selectedMeter) return;
-  const prev = state.previousReading;
-  const isLow = prev !== null && val < prev;
-
-  if (isLow && !state.confirmingLowReading) {
-    state.confirmingLowReading = true;
-    updateConsumption();
-    return;
-  }
-
-  const submitBtn = document.getElementById("submit-btn");
-  submitBtn.disabled = true;
-  submitBtn.textContent = "Saving...";
-
-  const { error } = await sb.from("meter_readings").insert({
-    meter_id: state.selectedMeter.id,
-    reading_value: val,
-    recorded_by: state.operator.id,
-    shift: document.getElementById("shift-select").value,
-    reading_date: todayStr(),
-    notes: isLow ? "possible reset/replacement — confirmed by operator" : null,
-  });
-
-  if (error) {
-    toast("Save failed: " + error.message, "err");
-    submitBtn.disabled = false;
-    updateConsumption();
-    return;
-  }
-
-  toast(`Saved ✓ ${state.selectedMeter.meter_code}`);
-  state.confirmingLowReading = false;
-  state.selectedMeter = null;
-  state.previousReading = null;
-  searchInput.value = "";
-  readingInput.value = "";
-  readingInput.disabled = true;
-  document.getElementById("meter-info").classList.add("hidden");
-  document.getElementById("consumption-box").classList.add("hidden");
-  submitBtn.disabled = true;
-  submitBtn.textContent = "Submit Reading";
-  submitBtn.className = "big";
-  searchInput.focus();
-};
-
-// ============================================================
-// ROUND VIEW (Type 1 operators — tile grid, tap to log)
-// ============================================================
-async function refreshRoundGrid() {
-  const roundMeters = state.meters.filter(m => m.reading_mode === "daily_round");
-  const grid = document.getElementById("round-grid");
-  const emptyMsg = document.getElementById("round-empty");
-
-  if (roundMeters.length === 0) {
+  if (tileMeters.length === 0) {
     grid.innerHTML = "";
     emptyMsg.classList.remove("hidden");
-    document.getElementById("round-progress-text").textContent = "0 / 0 read";
-    document.getElementById("round-progress-fill").style.width = "0%";
+    document.getElementById("tile-progress-text").textContent = "0 / 0 read";
+    document.getElementById("tile-progress-fill").style.width = "0%";
     return;
   }
   emptyMsg.classList.add("hidden");
 
+  const shiftTag = currentTileShiftTag();
   const { data, error } = await sb.from("meter_readings").select("meter_id")
-    .eq("reading_date", todayStr()).eq("shift", "Round");
-  state.roundReadIds = new Set(error ? [] : data.map(r => r.meter_id));
+    .eq("reading_date", todayStr()).eq("shift", shiftTag);
+  state.tileReadIds = new Set(error ? [] : data.map(r => r.meter_id));
 
   grid.innerHTML = "";
-  roundMeters.forEach(m => {
-    const isDone = state.roundReadIds.has(m.id);
+  tileMeters.forEach(m => {
+    const isDone = state.tileReadIds.has(m.id);
     const tile = document.createElement("button");
     tile.type = "button";
     tile.className = "round-tile" + (isDone ? " done" : "");
@@ -674,81 +583,81 @@ async function refreshRoundGrid() {
       <div class="rt-name">${m.name}</div>
       <div class="rt-status" style="color:${isDone ? "var(--green)" : "var(--text-muted)"};">${isDone ? "✓ Done" : "Tap to read"}</div>
     `;
-    if (!isDone) tile.onclick = () => openRoundModal(m);
+    if (!isDone) tile.onclick = () => openTileModal(m);
     grid.appendChild(tile);
   });
 
-  const doneCount = roundMeters.filter(m => state.roundReadIds.has(m.id)).length;
-  document.getElementById("round-progress-text").textContent = `${doneCount} / ${roundMeters.length} read`;
-  document.getElementById("round-progress-fill").style.width = `${Math.round((doneCount / roundMeters.length) * 100)}%`;
+  const doneCount = tileMeters.filter(m => state.tileReadIds.has(m.id)).length;
+  document.getElementById("tile-progress-text").textContent = `${doneCount} / ${tileMeters.length} read`;
+  document.getElementById("tile-progress-fill").style.width = `${Math.round((doneCount / tileMeters.length) * 100)}%`;
 }
 
-async function openRoundModal(m) {
-  state.roundModalMeter = m;
-  state.roundModalConfirmLow = false;
+async function openTileModal(m) {
+  state.tileModalMeter = m;
+  state.tileModalConfirmLow = false;
 
   const { data } = await sb.from("latest_meter_readings").select("reading_value").eq("meter_id", m.id).maybeSingle();
-  state.roundModalPrevious = data ? Number(data.reading_value) : null;
+  state.tileModalPrevious = data ? Number(data.reading_value) : null;
 
   document.getElementById("rm-code").textContent = m.meter_code;
   document.getElementById("rm-name").textContent = m.name;
   document.getElementById("rm-location").textContent = m.location || "—";
-  document.getElementById("rm-previous").textContent = state.roundModalPrevious !== null ? state.roundModalPrevious : "No prior reading";
+  document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
   document.getElementById("rm-unit").textContent = m.unit;
 
   const input = document.getElementById("rm-reading-input");
   input.value = "";
   document.getElementById("rm-consumption-box").classList.add("hidden");
-  updateRoundModalButton();
+  updateTileModalButton();
   document.getElementById("round-modal").classList.add("open");
   input.focus();
 }
 
 document.getElementById("rm-reading-input").addEventListener("input", () => {
-  state.roundModalConfirmLow = false;
-  updateRoundModalConsumption();
+  state.tileModalConfirmLow = false;
+  updateTileModalConsumption();
 });
 
-function updateRoundModalConsumption() {
+function updateTileModalConsumption() {
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const box = document.getElementById("rm-consumption-box");
-  if (isNaN(val)) { box.classList.add("hidden"); updateRoundModalButton(); return; }
-  const prev = state.roundModalPrevious;
+  if (isNaN(val)) { box.classList.add("hidden"); updateTileModalButton(); return; }
+  const prev = state.tileModalPrevious;
   const consumption = prev !== null ? val - prev : 0;
   box.classList.remove("hidden");
-  document.getElementById("rm-consumption-value").textContent = `${consumption.toFixed(2)} ${state.roundModalMeter.unit}`;
+  document.getElementById("rm-consumption-value").textContent = `${consumption.toFixed(2)} ${state.tileModalMeter.unit}`;
   const isLow = prev !== null && val < prev;
   document.getElementById("rm-consumption-warning").classList.toggle("hidden", !isLow);
   box.style.background = isLow ? "var(--red-bg)" : "var(--green-bg)";
-  updateRoundModalButton();
+  updateTileModalButton();
 }
 
-function updateRoundModalButton() {
+function updateTileModalButton() {
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const btn = document.getElementById("rm-submit-btn");
   if (isNaN(val)) { btn.disabled = true; btn.textContent = "Submit Reading"; btn.className = "big primary"; return; }
-  const prev = state.roundModalPrevious;
+  const prev = state.tileModalPrevious;
   const isLow = prev !== null && val < prev;
   btn.disabled = false;
-  btn.textContent = isLow && !state.roundModalConfirmLow ? "Lower than previous — tap to confirm" : "Submit Reading";
-  btn.className = "big " + (isLow && !state.roundModalConfirmLow ? "warn" : "primary");
+  btn.textContent = isLow && !state.tileModalConfirmLow ? "Lower than previous — tap to confirm" : "Submit Reading";
+  btn.className = "big " + (isLow && !state.tileModalConfirmLow ? "warn" : "primary");
 }
 
 document.getElementById("rm-cancel-btn").onclick = () => {
   document.getElementById("round-modal").classList.remove("open");
-  state.roundModalMeter = null;
+  state.tileModalMeter = null;
 };
 
 document.getElementById("rm-submit-btn").onclick = async () => {
   const val = parseFloat(document.getElementById("rm-reading-input").value);
-  const m = state.roundModalMeter;
+  const m = state.tileModalMeter;
   if (isNaN(val) || !m) return;
-  const prev = state.roundModalPrevious;
+  const prev = state.tileModalPrevious;
   const isLow = prev !== null && val < prev;
 
-  if (isLow && !state.roundModalConfirmLow) {
-    state.roundModalConfirmLow = true;
-    updateRoundModalButton();
+  if (isLow && !state.tileModalConfirmLow) {
+    state.tileModalConfirmLow = true;
+    updateTileModalButton();
     return;
   }
 
@@ -759,7 +668,7 @@ document.getElementById("rm-submit-btn").onclick = async () => {
     meter_id: m.id,
     reading_value: val,
     recorded_by: state.operator.id,
-    shift: "Round",
+    shift: currentTileShiftTag(),
     reading_date: todayStr(),
     notes: isLow ? "possible reset/replacement — confirmed by operator" : null,
   });
@@ -770,22 +679,22 @@ document.getElementById("rm-submit-btn").onclick = async () => {
 
   toast(`Saved ✓ ${m.meter_code}`);
   document.getElementById("round-modal").classList.remove("open");
-  state.roundModalMeter = null;
-  await refreshRoundGrid();
+  state.tileModalMeter = null;
+  await refreshTileGrid();
 };
 
 // One realtime channel, active whenever logged in, refreshing whichever
-// view is currently on screen. New meters also re-filter the search/grid.
+// view is currently on screen. New meters also re-filter the tile grid.
 function subscribeLiveChannel() {
   if (state.liveChannel) return;
   state.liveChannel = sb.channel("meter_readings_and_meters_live")
     .on("postgres_changes", { event: "*", schema: "public", table: "meter_readings" }, () => {
-      if (!document.getElementById("round-view").classList.contains("hidden")) refreshRoundGrid();
+      if (!document.getElementById("tile-view").classList.contains("hidden")) refreshTileGrid();
       if (!document.getElementById("dashboard-view").classList.contains("hidden")) refreshDashboard();
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "meters" }, async () => {
       await loadMeters();
-      if (!document.getElementById("round-view").classList.contains("hidden")) refreshRoundGrid();
+      if (!document.getElementById("tile-view").classList.contains("hidden")) refreshTileGrid();
       if (!document.getElementById("dashboard-view").classList.contains("hidden")) { refreshGroupOptions(); refreshDashboard(); }
     })
     .subscribe();
@@ -796,6 +705,7 @@ function subscribeLiveChannel() {
 // ============================================================
 async function initDashboard() {
   document.getElementById("add-meter-panel").classList.toggle("hidden", !isAdmin());
+  document.getElementById("add-operator-panel").classList.toggle("hidden", !isAdmin());
   document.getElementById("filter-date").value = todayStr();
   refreshGroupOptions();
 
@@ -945,6 +855,45 @@ addMeterForm.addEventListener("submit", async (e) => {
   refreshGroupOptions();
   await refreshDashboard();
 });
+
+// ---------- Add Operator (helper — generates values, doesn't write anything) ----------
+document.getElementById("ao-pin-random-btn").onclick = () => {
+  document.getElementById("ao-pin").value = String(Math.floor(1000 + Math.random() * 9000));
+};
+
+document.getElementById("ao-generate-btn").onclick = () => {
+  const name = document.getElementById("ao-name").value.trim();
+  const code = document.getElementById("ao-code").value.trim().toLowerCase();
+  const level = document.getElementById("ao-level").value;
+  const pin = document.getElementById("ao-pin").value.trim();
+
+  if (!name || !code || !/^\d{4}$/.test(pin)) {
+    toast("Name, code and a 4-digit PIN are required", "err");
+    return;
+  }
+
+  document.getElementById("ao-out-email").textContent = `${code}@mdpl.local`;
+  document.getElementById("ao-out-pin").textContent = pin;
+  document.getElementById("ao-out-code").textContent = code;
+  document.getElementById("ao-out-name").textContent = name;
+  document.getElementById("ao-out-level").textContent = level;
+  document.getElementById("ao-output").classList.remove("hidden");
+  document.getElementById("ao-copy-btn").classList.remove("hidden");
+};
+
+document.getElementById("ao-copy-btn").onclick = async () => {
+  const code = document.getElementById("ao-out-code").textContent;
+  const pin = document.getElementById("ao-out-pin").textContent;
+  const name = document.getElementById("ao-out-name").textContent;
+  const level = document.getElementById("ao-out-level").textContent;
+  const text = `Email: ${code}@mdpl.local\nPassword: ${pin}\n\ncode: ${code}\nname: ${name}\nlevel: ${level}\nactive: true`;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Copied ✓");
+  } catch {
+    toast("Couldn't copy — select the text manually", "err");
+  }
+};
 
 function exportCsv() {
   if (lastRows.length === 0) { toast("Nothing to export", "err"); return; }
