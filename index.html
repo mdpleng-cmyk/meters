@@ -840,7 +840,7 @@ addMeterForm.addEventListener("submit", async (e) => {
   btn.disabled = true; btn.textContent = "Adding...";
 
   const { error } = await sb.from("meters").insert({
-    meter_code: code, name, location, meter_group: group, type, unit, active: true, reading_mode: readingMode,
+    meter_code: code, name, location, meter_group: group, meter_type: type, unit, active: true, reading_mode: readingMode,
   });
 
   btn.disabled = false; btn.textContent = "Add Meter";
