@@ -69,6 +69,18 @@
   .meter-row:hover { background: var(--bg); }
   .meter-row p.code { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--text); margin: 0; }
   .meter-row p.loc { font-size: 11px; color: var(--text-muted); margin: 2px 0 0; }
+  .round-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .round-tile { border-radius: var(--radius); padding: 14px 12px; border: 1px solid var(--border); background: var(--panel-raised); cursor: pointer; text-align: left; }
+  .round-tile:active { transform: translateY(1px); }
+  .round-tile.done { background: var(--green-bg); border-color: rgba(62,207,142,0.35); cursor: default; }
+  .round-tile .rt-code { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--text); }
+  .round-tile .rt-name { font-size: 11px; color: var(--text-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .round-tile .rt-status { font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 8px; }
+  .progress-track { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; height: 8px; overflow: hidden; margin-top: 10px; }
+  .progress-fill { background: var(--amber); height: 100%; }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 100; }
+  .modal-overlay.open { display: flex; }
+  .modal-box { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; width: 88%; max-width: 380px; }
 </style>
 </head>
 <body>
@@ -100,7 +112,7 @@
     </div>
     <div style="display:flex; align-items:center; gap:10px;">
       <div class="tab-nav" id="tab-switch">
-        <button data-tab="entry" class="tab-btn active">Entry</button>
+        <button data-tab="entry" id="entry-tab-btn" class="tab-btn active">Entry</button>
         <button data-tab="dashboard" id="dashboard-tab-btn" class="tab-btn hidden">Control Room</button>
       </div>
       <button id="logout-btn" style="padding:6px 10px; font-size:11px;">Exit</button>
@@ -150,6 +162,18 @@
     </div>
   </main>
 
+  <!-- ---------- ROUND VIEW (Type 1 operators) ---------- -->
+  <main id="round-view" class="wrap hidden">
+    <div class="panel">
+      <span class="section-label" style="margin:0;">Today's Round</span>
+      <p class="readout-empty" style="margin-top:4px;">Tap a meter, add its reading. Done ones turn green.</p>
+      <div class="progress-track"><div class="progress-fill" id="round-progress-fill" style="width:0%;"></div></div>
+      <p class="readout-empty" style="margin-top:6px;" id="round-progress-text">0 / 0 read</p>
+    </div>
+    <div id="round-grid" class="round-grid"></div>
+    <p id="round-empty" class="readout-empty hidden" style="text-align:center; padding:20px 0;">No daily-round meters set up yet — ask Control Room to add one.</p>
+  </main>
+
   <!-- ---------- CONTROL ROOM DASHBOARD VIEW ---------- -->
   <main id="dashboard-view" class="wrap wide hidden">
     <div class="panel">
@@ -165,6 +189,7 @@
             <option>Morning</option>
             <option>Evening</option>
             <option>Night</option>
+            <option>Round</option>
           </select>
         </div>
         <div>
@@ -224,6 +249,13 @@
             <input id="am-unit" type="text" placeholder="e.g. kWh" required />
           </div>
         </div>
+        <div class="field">
+          <label class="field-label">Reading Mode</label>
+          <select id="am-reading-mode">
+            <option value="shift_wise">Shift-wise (utility operators, per shift)</option>
+            <option value="daily_round">Daily round (6 AM plant-wide walk)</option>
+          </select>
+        </div>
         <div style="display:flex; gap:8px; margin-top:4px;">
           <button type="submit" id="am-submit-btn" class="primary" style="flex:1;">Add Meter</button>
           <button type="button" id="am-cancel-btn" style="flex:1;">Cancel</button>
@@ -259,6 +291,31 @@
   </main>
 </div>
 
+<!-- ---------- ROUND READING MODAL ---------- -->
+<div id="round-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="eyebrow" id="rm-code"></div>
+    <p style="font-family:'Oswald',sans-serif; font-size:16px; margin:2px 0 10px;" id="rm-name"></p>
+    <p class="readout-empty" style="margin:0 0 12px;">
+      <span id="rm-location"></span> &middot;
+      Previous: <span id="rm-previous" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--text);"></span> <span id="rm-unit"></span>
+    </p>
+    <input id="rm-reading-input" type="number" inputmode="decimal" step="any" placeholder="0.00"
+      style="padding:16px; font-size:28px; text-align:center; margin-bottom:12px;" />
+    <div id="rm-consumption-box" class="hidden" style="border-radius:var(--radius); padding:12px; text-align:center; margin-bottom:12px;">
+      <div class="eyebrow">Consumption</div>
+      <p id="rm-consumption-value" class="hero-number" style="font-size:20px; margin:4px 0 0;"></p>
+      <p id="rm-consumption-warning" class="hidden" style="font-size:12px; color:var(--amber); margin-top:6px;">
+        Lower than previous — could be a reset or replacement. Tap again to confirm.
+      </p>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button id="rm-submit-btn" class="primary big" style="flex:1;">Submit Reading</button>
+      <button id="rm-cancel-btn" style="flex:1;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container" style="position:fixed; bottom:20px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:200; pointer-events:none;"></div>
 
 <script>
@@ -273,7 +330,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // STATE
 // ============================================================
 const state = {
-  operator: null,        // { id, code, name, role }
+  operator: null,        // { id, code, name, role, operator_type }
   meters: [],
   selectedMeter: null,
   previousReading: null,
@@ -281,6 +338,11 @@ const state = {
   pinOperator: null,
   confirmingLowReading: false,
   dashboardChannel: null,
+  liveChannel: null,
+  roundReadIds: new Set(),   // meter_ids already read in today's round
+  roundModalMeter: null,
+  roundModalPrevious: null,
+  roundModalConfirmLow: false,
 };
 
 // ============================================================
@@ -397,7 +459,7 @@ async function attemptLogin() {
 async function loadOperatorProfile() {
   const { data: userData } = await sb.auth.getUser();
   if (!userData?.user) return false;
-  const { data, error } = await sb.from("operators").select("id,code,name,role").eq("id", userData.user.id).single();
+  const { data, error } = await sb.from("operators").select("id,code,name,role,operator_type").eq("id", userData.user.id).single();
   if (error || !data) { toast("Profile not found for this login", "err"); await sb.auth.signOut(); return false; }
   state.operator = data;
   return true;
@@ -406,7 +468,7 @@ async function loadOperatorProfile() {
 document.getElementById("logout-btn").onclick = async () => {
   await sb.auth.signOut();
   state.operator = null;
-  if (state.dashboardChannel) sb.removeChannel(state.dashboardChannel);
+  if (state.liveChannel) { sb.removeChannel(state.liveChannel); state.liveChannel = null; }
   document.getElementById("main-app").classList.add("hidden");
   document.getElementById("login-screen").classList.remove("hidden");
   document.getElementById("pin-pad-screen").classList.add("hidden");
@@ -418,25 +480,34 @@ document.getElementById("logout-btn").onclick = async () => {
 // ============================================================
 // MAIN APP SHELL
 // ============================================================
+function isRoundOperator() { return state.operator?.operator_type === "round"; }
+
 async function showMainApp() {
   document.getElementById("login-screen").classList.add("hidden");
   document.getElementById("main-app").classList.remove("hidden");
   document.getElementById("header-name").textContent = state.operator.name;
-  document.getElementById("header-role").textContent = state.operator.role === "control_room" ? "Control Room" : "Operator";
+  document.getElementById("header-role").textContent = state.operator.role === "control_room" ? "Control Room" :
+    (isRoundOperator() ? "Round Operator" : "Utility Operator");
+  document.getElementById("entry-tab-btn").textContent = isRoundOperator() ? "Round" : "Entry";
   if (state.operator.role === "control_room") {
     document.getElementById("dashboard-tab-btn").classList.remove("hidden");
   }
-  setTab("entry");
   document.getElementById("shift-select").value = defaultShift();
   await loadMeters();
+  setTab("entry");
+  subscribeLiveChannel();
 }
 
 document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => setTab(btn.dataset.tab));
 function setTab(tab) {
-  document.getElementById("entry-view").classList.toggle("hidden", tab !== "entry");
+  const showRound = tab === "entry" && isRoundOperator();
+  const showEntry = tab === "entry" && !isRoundOperator();
+  document.getElementById("entry-view").classList.toggle("hidden", !showEntry);
+  document.getElementById("round-view").classList.toggle("hidden", !showRound);
   document.getElementById("dashboard-view").classList.toggle("hidden", tab !== "dashboard");
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "dashboard") initDashboard();
+  if (showRound) refreshRoundGrid();
 }
 
 // ============================================================
@@ -454,7 +525,8 @@ searchInput.addEventListener("input", () => {
   const q = searchInput.value.trim().toLowerCase();
   if (!q) { dropdown.classList.add("hidden"); return; }
   const matches = state.meters.filter(m =>
-    m.meter_code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
+    m.reading_mode !== "daily_round" &&
+    (m.meter_code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
   ).slice(0, 8);
   dropdown.innerHTML = "";
   if (matches.length === 0) { dropdown.classList.add("hidden"); return; }
@@ -566,6 +638,155 @@ document.getElementById("submit-btn").onclick = async () => {
 };
 
 // ============================================================
+// ROUND VIEW (Type 1 operators — tile grid, tap to log)
+// ============================================================
+async function refreshRoundGrid() {
+  const roundMeters = state.meters.filter(m => m.reading_mode === "daily_round");
+  const grid = document.getElementById("round-grid");
+  const emptyMsg = document.getElementById("round-empty");
+
+  if (roundMeters.length === 0) {
+    grid.innerHTML = "";
+    emptyMsg.classList.remove("hidden");
+    document.getElementById("round-progress-text").textContent = "0 / 0 read";
+    document.getElementById("round-progress-fill").style.width = "0%";
+    return;
+  }
+  emptyMsg.classList.add("hidden");
+
+  const { data, error } = await sb.from("meter_readings").select("meter_id")
+    .eq("reading_date", todayStr()).eq("shift", "Round");
+  state.roundReadIds = new Set(error ? [] : data.map(r => r.meter_id));
+
+  grid.innerHTML = "";
+  roundMeters.forEach(m => {
+    const isDone = state.roundReadIds.has(m.id);
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "round-tile" + (isDone ? " done" : "");
+    tile.innerHTML = `
+      <div class="rt-code">${m.meter_code}</div>
+      <div class="rt-name">${m.name}</div>
+      <div class="rt-status" style="color:${isDone ? "var(--green)" : "var(--text-muted)"};">${isDone ? "✓ Done" : "Tap to read"}</div>
+    `;
+    if (!isDone) tile.onclick = () => openRoundModal(m);
+    grid.appendChild(tile);
+  });
+
+  const doneCount = roundMeters.filter(m => state.roundReadIds.has(m.id)).length;
+  document.getElementById("round-progress-text").textContent = `${doneCount} / ${roundMeters.length} read`;
+  document.getElementById("round-progress-fill").style.width = `${Math.round((doneCount / roundMeters.length) * 100)}%`;
+}
+
+async function openRoundModal(m) {
+  state.roundModalMeter = m;
+  state.roundModalConfirmLow = false;
+
+  const { data } = await sb.from("latest_meter_readings").select("reading_value").eq("meter_id", m.id).maybeSingle();
+  state.roundModalPrevious = data ? Number(data.reading_value) : null;
+
+  document.getElementById("rm-code").textContent = m.meter_code;
+  document.getElementById("rm-name").textContent = m.name;
+  document.getElementById("rm-location").textContent = m.location || "—";
+  document.getElementById("rm-previous").textContent = state.roundModalPrevious !== null ? state.roundModalPrevious : "No prior reading";
+  document.getElementById("rm-unit").textContent = m.unit;
+
+  const input = document.getElementById("rm-reading-input");
+  input.value = "";
+  document.getElementById("rm-consumption-box").classList.add("hidden");
+  updateRoundModalButton();
+  document.getElementById("round-modal").classList.add("open");
+  input.focus();
+}
+
+document.getElementById("rm-reading-input").addEventListener("input", () => {
+  state.roundModalConfirmLow = false;
+  updateRoundModalConsumption();
+});
+
+function updateRoundModalConsumption() {
+  const val = parseFloat(document.getElementById("rm-reading-input").value);
+  const box = document.getElementById("rm-consumption-box");
+  if (isNaN(val)) { box.classList.add("hidden"); updateRoundModalButton(); return; }
+  const prev = state.roundModalPrevious;
+  const consumption = prev !== null ? val - prev : 0;
+  box.classList.remove("hidden");
+  document.getElementById("rm-consumption-value").textContent = `${consumption.toFixed(2)} ${state.roundModalMeter.unit}`;
+  const isLow = prev !== null && val < prev;
+  document.getElementById("rm-consumption-warning").classList.toggle("hidden", !isLow);
+  box.style.background = isLow ? "var(--red-bg)" : "var(--green-bg)";
+  updateRoundModalButton();
+}
+
+function updateRoundModalButton() {
+  const val = parseFloat(document.getElementById("rm-reading-input").value);
+  const btn = document.getElementById("rm-submit-btn");
+  if (isNaN(val)) { btn.disabled = true; btn.textContent = "Submit Reading"; btn.className = "big primary"; return; }
+  const prev = state.roundModalPrevious;
+  const isLow = prev !== null && val < prev;
+  btn.disabled = false;
+  btn.textContent = isLow && !state.roundModalConfirmLow ? "Lower than previous — tap to confirm" : "Submit Reading";
+  btn.className = "big " + (isLow && !state.roundModalConfirmLow ? "warn" : "primary");
+}
+
+document.getElementById("rm-cancel-btn").onclick = () => {
+  document.getElementById("round-modal").classList.remove("open");
+  state.roundModalMeter = null;
+};
+
+document.getElementById("rm-submit-btn").onclick = async () => {
+  const val = parseFloat(document.getElementById("rm-reading-input").value);
+  const m = state.roundModalMeter;
+  if (isNaN(val) || !m) return;
+  const prev = state.roundModalPrevious;
+  const isLow = prev !== null && val < prev;
+
+  if (isLow && !state.roundModalConfirmLow) {
+    state.roundModalConfirmLow = true;
+    updateRoundModalButton();
+    return;
+  }
+
+  const btn = document.getElementById("rm-submit-btn");
+  btn.disabled = true; btn.textContent = "Saving...";
+
+  const { error } = await sb.from("meter_readings").insert({
+    meter_id: m.id,
+    reading_value: val,
+    recorded_by: state.operator.id,
+    shift: "Round",
+    reading_date: todayStr(),
+    notes: isLow ? "possible reset/replacement — confirmed by operator" : null,
+  });
+
+  btn.disabled = false; btn.textContent = "Submit Reading";
+
+  if (error) { toast("Save failed: " + error.message, "err"); return; }
+
+  toast(`Saved ✓ ${m.meter_code}`);
+  document.getElementById("round-modal").classList.remove("open");
+  state.roundModalMeter = null;
+  await refreshRoundGrid();
+};
+
+// One realtime channel, active whenever logged in, refreshing whichever
+// view is currently on screen. New meters also re-filter the search/grid.
+function subscribeLiveChannel() {
+  if (state.liveChannel) return;
+  state.liveChannel = sb.channel("meter_readings_and_meters_live")
+    .on("postgres_changes", { event: "*", schema: "public", table: "meter_readings" }, () => {
+      if (!document.getElementById("round-view").classList.contains("hidden")) refreshRoundGrid();
+      if (!document.getElementById("dashboard-view").classList.contains("hidden")) refreshDashboard();
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "meters" }, async () => {
+      await loadMeters();
+      if (!document.getElementById("round-view").classList.contains("hidden")) refreshRoundGrid();
+      if (!document.getElementById("dashboard-view").classList.contains("hidden")) { refreshGroupOptions(); refreshDashboard(); }
+    })
+    .subscribe();
+}
+
+// ============================================================
 // CONTROL ROOM DASHBOARD
 // ============================================================
 async function initDashboard() {
@@ -578,7 +799,6 @@ async function initDashboard() {
   document.getElementById("export-btn").onclick = exportCsv;
 
   await refreshDashboard();
-  subscribeRealtime();
 }
 
 function refreshGroupOptions() {
@@ -696,6 +916,7 @@ addMeterForm.addEventListener("submit", async (e) => {
   const group = document.getElementById("am-group").value.trim() || null;
   const type = document.getElementById("am-type").value;
   const unit = document.getElementById("am-unit").value.trim();
+  const readingMode = document.getElementById("am-reading-mode").value;
 
   if (!code || !name || !unit) { toast("Meter code, name and unit are required", "err"); return; }
 
@@ -703,7 +924,7 @@ addMeterForm.addEventListener("submit", async (e) => {
   btn.disabled = true; btn.textContent = "Adding...";
 
   const { error } = await sb.from("meters").insert({
-    meter_code: code, name, location, meter_group: group, type, unit, active: true,
+    meter_code: code, name, location, meter_group: group, type, unit, active: true, reading_mode: readingMode,
   });
 
   btn.disabled = false; btn.textContent = "Add Meter";
@@ -718,20 +939,6 @@ addMeterForm.addEventListener("submit", async (e) => {
   refreshGroupOptions();
   await refreshDashboard();
 });
-
-function subscribeRealtime() {
-  if (state.dashboardChannel) return;
-  state.dashboardChannel = sb.channel("meter_readings_live")
-    .on("postgres_changes", { event: "*", schema: "public", table: "meter_readings" }, () => {
-      refreshDashboard();
-    })
-    .on("postgres_changes", { event: "*", schema: "public", table: "meters" }, async () => {
-      await loadMeters();
-      refreshGroupOptions();
-      refreshDashboard();
-    })
-    .subscribe();
-}
 
 function exportCsv() {
   if (lastRows.length === 0) { toast("Nothing to export", "err"); return; }
