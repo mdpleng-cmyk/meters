@@ -169,127 +169,6 @@
       </div>
     </div>
 
-    <!-- ---------- ADD METER (Admin only) ---------- -->
-    <div id="add-meter-panel" class="panel hidden">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-        <span class="section-label" style="margin:0;">Add Meter</span>
-        <button id="add-meter-toggle-btn">+ New Meter</button>
-      </div>
-      <form id="add-meter-form" class="hidden">
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label">Meter Code</label>
-            <input id="am-code" type="text" placeholder="e.g. AMM-COMP-1-KWH" required />
-          </div>
-          <div class="field">
-            <label class="field-label">Name</label>
-            <input id="am-name" type="text" placeholder="e.g. Ammonia Compressor 1 — kWh" required />
-          </div>
-        </div>
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label">Location</label>
-            <input id="am-location" type="text" placeholder="e.g. Compressor Room" />
-          </div>
-          <div class="field">
-            <label class="field-label">Group</label>
-            <input id="am-group" type="text" list="am-group-options" placeholder="e.g. Refrigeration" />
-            <datalist id="am-group-options"></datalist>
-          </div>
-        </div>
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label">Type</label>
-            <select id="am-type">
-              <option value="energy">Energy (kWh)</option>
-              <option value="hours">Running Hours (hr)</option>
-              <option value="mass">Mass (kg)</option>
-              <option value="volume">Volume (L / KL)</option>
-              <option value="flow">Flow</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div class="field">
-            <label class="field-label">Unit</label>
-            <input id="am-unit" type="text" placeholder="e.g. kWh" required />
-          </div>
-        </div>
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label">Reading Mode</label>
-            <select id="am-reading-mode">
-              <option value="shift_wise">Shift-wise (utility operators, per shift)</option>
-              <option value="daily_round">Daily round (6 AM plant-wide walk)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label class="field-label">Cost per Unit (₹) — optional</label>
-            <input id="am-cost" type="number" step="any" placeholder="e.g. 8.50" />
-          </div>
-        </div>
-        <div style="display:flex; gap:8px; margin-top:4px;">
-          <button type="submit" id="am-submit-btn" class="primary" style="flex:1;">Add Meter</button>
-          <button type="button" id="am-cancel-btn" style="flex:1;">Cancel</button>
-        </div>
-      </form>
-      <p id="add-meter-empty" class="readout-empty">Add a meter and it's available in the reading queue immediately — no deploy needed.</p>
-    </div>
-
-    <!-- ---------- ADD OPERATOR (Admin only) — helper, not automatic ---------- -->
-    <div id="add-operator-panel" class="panel hidden">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-        <span class="section-label" style="margin:0;">Add Operator</span>
-      </div>
-      <p class="readout-empty" style="margin-bottom:12px;">
-        Accounts can't be created from this app (would need exposing a secret key). Fill this in, then follow the two steps it generates below in the Supabase dashboard.
-      </p>
-      <div class="grid2">
-        <div class="field">
-          <label class="field-label">Name</label>
-          <input id="ao-name" type="text" placeholder="e.g. Ravi Kumar" />
-        </div>
-        <div class="field">
-          <label class="field-label">Code</label>
-          <input id="ao-code" type="text" placeholder="e.g. ravi" />
-        </div>
-      </div>
-      <div class="grid2">
-        <div class="field">
-          <label class="field-label">Level</label>
-          <select id="ao-level">
-            <option value="apprentice">Apprentice</option>
-            <option value="operator" selected>Operator (daily round)</option>
-            <option value="utility_operator">Utility Operator (shift-wise)</option>
-            <option value="control_room">Control Room</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-        <div class="field">
-          <label class="field-label">PIN (4 digits)</label>
-          <div style="display:flex; gap:6px;">
-            <input id="ao-pin" type="text" inputmode="numeric" maxlength="4" placeholder="1234" style="flex:1;" />
-            <button type="button" id="ao-pin-random-btn" style="white-space:nowrap;">Random</button>
-          </div>
-        </div>
-      </div>
-      <div id="ao-output" class="hidden" style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-top:6px; font-size:12px; line-height:1.7;">
-        <div class="eyebrow" style="margin-bottom:6px;">Step 1 — Authentication → Users → Add user</div>
-        <div>Email: <span id="ao-out-email" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
-        <div>Password: <span id="ao-out-pin" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
-        <div>Auto Confirm User: <span style="color:var(--amber);">ON</span></div>
-        <div class="eyebrow" style="margin:10px 0 6px;">Step 2 — Table Editor → operators → Insert row</div>
-        <div>id: <span style="color:var(--text-muted);">paste the UID from Step 1</span></div>
-        <div>code: <span id="ao-out-code" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
-        <div>name: <span id="ao-out-name" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
-        <div>level: <span id="ao-out-level" style="font-family:'JetBrains Mono',monospace; color:var(--amber);"></span></div>
-        <div>active: <span style="color:var(--amber);">true</span></div>
-      </div>
-      <div style="display:flex; gap:8px; margin-top:12px;">
-        <button type="button" id="ao-generate-btn" class="primary" style="flex:1;">Generate Steps</button>
-        <button type="button" id="ao-copy-btn" class="hidden" style="flex:1;">Copy Details</button>
-      </div>
-    </div>
-
     <div class="panel">
       <span class="section-label">Shift Checklist <span class="count" id="checklist-summary"></span></span>
       <div id="checklist-grid" class="checklist-grid"></div>
@@ -387,9 +266,10 @@ const state = {
   pendingPin: "",
   pinOperator: null,
   liveChannel: null,
-  tileReadIds: new Set(),   // meter_ids already read for the current tile view/shift
+  costRates: {},          // meter_type -> shared rate
   tileModalMeter: null,
   tileModalPrevious: null,
+  tileModalShiftTag: null,
 };
 
 // ============================================================
@@ -528,11 +408,14 @@ document.getElementById("logout-btn").onclick = async () => {
 // MAIN APP SHELL
 // ============================================================
 const LEVEL_LABELS = {
-  apprentice: "Apprentice", operator: "Operator", utility_operator: "Utility Operator",
-  control_room: "Control Room", admin: "Admin",
+  apprentice: "Apprentice", boiler_operator: "Boiler Operator", refrigeration_operator: "Refrigeration Operator",
+  plant_operator: "Plant Operator", control_room: "Control Room", admin: "Admin",
 };
-function isRoundLevel() { return ["apprentice", "operator"].includes(state.operator?.level); }
-function isUtilityLevel() { return state.operator?.level === "utility_operator"; }
+const LEVEL_DEPARTMENT = {
+  boiler_operator: "Boiler", refrigeration_operator: "Refrigeration", plant_operator: "Plant",
+};
+function currentDepartment() { return LEVEL_DEPARTMENT[state.operator?.level] || null; } // null = apprentice, sees everything
+function isFieldLevel() { return ["apprentice", "boiler_operator", "refrigeration_operator", "plant_operator"].includes(state.operator?.level); }
 function isControlRoomOrAdmin() { return ["control_room", "admin"].includes(state.operator?.level); }
 function isAdmin() { return state.operator?.level === "admin"; }
 
@@ -541,18 +424,18 @@ async function showMainApp() {
   document.getElementById("main-app").classList.remove("hidden");
   document.getElementById("header-name").textContent = state.operator.name;
   document.getElementById("header-role").textContent = LEVEL_LABELS[state.operator.level] || state.operator.level;
-  document.getElementById("entry-tab-btn").textContent = isUtilityLevel() ? "Shift" : "Round";
+  document.getElementById("entry-tab-btn").textContent = currentDepartment() || "Readings";
   document.getElementById("entry-tab-btn").classList.toggle("hidden", isControlRoomOrAdmin());
   if (isControlRoomOrAdmin()) document.getElementById("dashboard-tab-btn").classList.remove("hidden");
-  document.getElementById("tile-shift-select").value = defaultShift();
   await loadMeters();
+  await loadCostRates();
   setTab(isControlRoomOrAdmin() ? "dashboard" : "entry");
   subscribeLiveChannel();
 }
 
 document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => setTab(btn.dataset.tab));
 function setTab(tab) {
-  const showTile = tab === "entry" && (isRoundLevel() || isUtilityLevel());
+  const showTile = tab === "entry" && isFieldLevel();
   document.getElementById("tile-view").classList.toggle("hidden", !showTile);
   document.getElementById("dashboard-view").classList.toggle("hidden", tab !== "dashboard");
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
@@ -563,8 +446,10 @@ function setTab(tab) {
 // ============================================================
 // TILE VIEW — used by every reading-taking level (Apprentice,
 // Operator, Utility Operator). Round levels: one flat list, done
-// = read today. Utility level: same tiles but scoped to shift_wise
-// meters, done = read for the currently-selected shift.
+// = read today. Field levels: tiles scoped to the operator's
+// department (meter_group), mixing daily_round and shift_wise
+// meters in one grid — each tile's own reading_mode decides
+// whether it's tracked per-day ("Round") or per-shift.
 // ============================================================
 async function loadMeters() {
   const { data, error } = await sb.from("meters").select("*").eq("active", true).order("meter_code");
@@ -572,20 +457,33 @@ async function loadMeters() {
   state.meters = data;
 }
 
+async function loadCostRates() {
+  const { data, error } = await sb.from("cost_rates").select("meter_type, rate");
+  if (error) { state.costRates = {}; return; }
+  state.costRates = Object.fromEntries(data.map(r => [r.meter_type, Number(r.rate)]));
+}
+
 document.getElementById("tile-shift-select").addEventListener("change", refreshTileGrid);
 
-function currentTileShiftTag() {
-  return isUtilityLevel() ? document.getElementById("tile-shift-select").value : "Round";
+function expectedShiftTag(m) {
+  return m.reading_mode === "daily_round" ? "Round" : document.getElementById("tile-shift-select").value;
+}
+
+function departmentMeters() {
+  const dept = currentDepartment();
+  if (!dept) return state.meters; // apprentice — no department yet, sees everything
+  return state.meters.filter(m => (m.meter_group || "").toLowerCase() === dept.toLowerCase());
 }
 
 async function refreshTileGrid() {
-  const isUtility = isUtilityLevel();
-  document.getElementById("tile-shift-field").classList.toggle("hidden", !isUtility);
-  document.getElementById("tile-title").textContent = isUtility
-    ? `${document.getElementById("tile-shift-select").value} Shift Readings`
-    : "Today's Round";
+  const tileMeters = departmentMeters();
+  const needsShift = tileMeters.some(m => m.reading_mode === "shift_wise");
+  document.getElementById("tile-shift-field").classList.toggle("hidden", !needsShift);
+  if (needsShift && !document.getElementById("tile-shift-select").value) {
+    document.getElementById("tile-shift-select").value = defaultShift();
+  }
+  document.getElementById("tile-title").textContent = currentDepartment() ? `${currentDepartment()} Readings` : "All Readings";
 
-  const tileMeters = state.meters.filter(m => m.reading_mode === (isUtility ? "shift_wise" : "daily_round"));
   const grid = document.getElementById("tile-grid");
   const emptyMsg = document.getElementById("tile-empty");
 
@@ -598,14 +496,19 @@ async function refreshTileGrid() {
   }
   emptyMsg.classList.add("hidden");
 
-  const shiftTag = currentTileShiftTag();
-  const { data, error } = await sb.from("meter_readings").select("meter_id")
-    .eq("reading_date", todayStr()).eq("shift", shiftTag);
-  state.tileReadIds = new Set(error ? [] : data.map(r => r.meter_id));
+  // One query for today's readings across every meter in this view,
+  // regardless of shift — then check each meter against its own
+  // expected tag (Round, or the currently selected shift).
+  const { data, error } = await sb.from("meter_readings").select("meter_id, shift")
+    .eq("reading_date", todayStr()).in("meter_id", tileMeters.map(m => m.id));
+  const readMap = {};
+  (error ? [] : data).forEach(r => { (readMap[r.meter_id] ||= new Set()).add(r.shift); });
 
   grid.innerHTML = "";
+  let doneCount = 0;
   tileMeters.forEach(m => {
-    const isDone = state.tileReadIds.has(m.id);
+    const isDone = !!readMap[m.id]?.has(expectedShiftTag(m));
+    if (isDone) doneCount++;
     const tile = document.createElement("button");
     tile.type = "button";
     tile.className = "round-tile" + (isDone ? " done" : "");
@@ -618,13 +521,13 @@ async function refreshTileGrid() {
     grid.appendChild(tile);
   });
 
-  const doneCount = tileMeters.filter(m => state.tileReadIds.has(m.id)).length;
   document.getElementById("tile-progress-text").textContent = `${doneCount} / ${tileMeters.length} read`;
   document.getElementById("tile-progress-fill").style.width = `${Math.round((doneCount / tileMeters.length) * 100)}%`;
 }
 
 async function openTileModal(m) {
   state.tileModalMeter = m;
+  state.tileModalShiftTag = expectedShiftTag(m);
 
   const { data } = await sb.from("latest_meter_readings").select("reading_value").eq("meter_id", m.id).maybeSingle();
   state.tileModalPrevious = data ? Number(data.reading_value) : null;
@@ -697,11 +600,13 @@ document.getElementById("rm-review-btn").onclick = () => {
     consRow.classList.remove("hidden");
     document.getElementById("rm-c-consumption").textContent = `${consumption.toFixed(2)} ${m.unit}`;
 
-    // Cost only shown if this meter has a per-unit rate set AND consumption is non-negative
-    if (consumption >= 0 && typeof m.cost_per_unit === "number") {
+    // Cost: this meter's own rate overrides the shared rate for its type;
+    // hidden entirely if neither is set, or if consumption went negative.
+    const rate = typeof m.cost_per_unit === "number" ? m.cost_per_unit : state.costRates[m.meter_type];
+    if (consumption >= 0 && typeof rate === "number") {
       costRow.classList.remove("hidden");
-      document.getElementById("rm-c-cost-label").textContent = `Est. Cost (₹${m.cost_per_unit}/${m.unit})`;
-      const cost = consumption * m.cost_per_unit;
+      document.getElementById("rm-c-cost-label").textContent = `Est. Cost (₹${rate}/${m.unit})`;
+      const cost = consumption * rate;
       document.getElementById("rm-c-cost").textContent = `₹${cost.toFixed(2)}`;
     } else {
       costRow.classList.add("hidden");
@@ -740,7 +645,7 @@ document.getElementById("rm-save-btn").onclick = async () => {
     meter_id: m.id,
     reading_value: val,
     recorded_by: state.operator.id,
-    shift: currentTileShiftTag(),
+    shift: state.tileModalShiftTag,
     reading_date: todayStr(),
     notes: isLow ? "possible reset/replacement — confirmed by operator" : null,
   });
@@ -769,6 +674,7 @@ function subscribeLiveChannel() {
       if (!document.getElementById("tile-view").classList.contains("hidden")) refreshTileGrid();
       if (!document.getElementById("dashboard-view").classList.contains("hidden")) { refreshGroupOptions(); refreshDashboard(); }
     })
+    .on("postgres_changes", { event: "*", schema: "public", table: "cost_rates" }, loadCostRates)
     .subscribe();
 }
 
@@ -776,8 +682,6 @@ function subscribeLiveChannel() {
 // CONTROL ROOM DASHBOARD
 // ============================================================
 async function initDashboard() {
-  document.getElementById("add-meter-panel").classList.toggle("hidden", !isAdmin());
-  document.getElementById("add-operator-panel").classList.toggle("hidden", !isAdmin());
   document.getElementById("filter-date").value = todayStr();
   refreshGroupOptions();
 
@@ -795,7 +699,6 @@ function refreshGroupOptions() {
   const current = groupSel.value;
   groupSel.innerHTML = '<option value="">All</option>' + groups.map(g => `<option>${g}</option>`).join("");
   if (groups.includes(current)) groupSel.value = current;
-  document.getElementById("am-group-options").innerHTML = groups.map(g => `<option value="${g}">`).join("");
 }
 
 function currentFilters() {
@@ -873,102 +776,6 @@ function renderChecklist(f) {
   });
   document.getElementById("checklist-summary").textContent = `${readCount} / ${visibleMeters.length} read`;
 }
-
-// ---------- Add Meter ----------
-const addMeterForm = document.getElementById("add-meter-form");
-const addMeterToggleBtn = document.getElementById("add-meter-toggle-btn");
-const addMeterEmpty = document.getElementById("add-meter-empty");
-
-addMeterToggleBtn.onclick = () => {
-  const opening = addMeterForm.classList.contains("hidden");
-  addMeterForm.classList.toggle("hidden", !opening);
-  addMeterEmpty.classList.toggle("hidden", opening);
-  addMeterToggleBtn.textContent = opening ? "Cancel" : "+ New Meter";
-  if (opening) document.getElementById("am-code").focus();
-};
-document.getElementById("am-cancel-btn").onclick = () => addMeterToggleBtn.click();
-
-document.getElementById("am-type").addEventListener("change", (e) => {
-  const defaults = { energy: "kWh", hours: "hr", mass: "kg", volume: "KL", flow: "m3/hr", other: "" };
-  const unitField = document.getElementById("am-unit");
-  if (!unitField.value || Object.values(defaults).includes(unitField.value)) {
-    unitField.value = defaults[e.target.value] || "";
-  }
-});
-
-addMeterForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const code = document.getElementById("am-code").value.trim().toUpperCase();
-  const name = document.getElementById("am-name").value.trim();
-  const location = document.getElementById("am-location").value.trim() || null;
-  const group = document.getElementById("am-group").value.trim() || null;
-  const type = document.getElementById("am-type").value;
-  const unit = document.getElementById("am-unit").value.trim();
-  const readingMode = document.getElementById("am-reading-mode").value;
-  const costRaw = document.getElementById("am-cost").value.trim();
-  const costPerUnit = costRaw === "" ? null : parseFloat(costRaw);
-
-  if (!code || !name || !unit) { toast("Meter code, name and unit are required", "err"); return; }
-
-  const btn = document.getElementById("am-submit-btn");
-  btn.disabled = true; btn.textContent = "Adding...";
-
-  const { error } = await sb.from("meters").insert({
-    meter_code: code, name, location, meter_group: group, meter_type: type, unit, active: true,
-    reading_mode: readingMode, cost_per_unit: costPerUnit,
-  });
-
-  btn.disabled = false; btn.textContent = "Add Meter";
-
-  if (error) { toast("Failed: " + error.message, "err"); return; }
-
-  toast(`Added ✓ ${code} — live in tomorrow's queue`);
-  addMeterForm.reset();
-  document.getElementById("am-unit").value = "kWh";
-  addMeterToggleBtn.click();
-  await loadMeters();
-  refreshGroupOptions();
-  await refreshDashboard();
-});
-
-// ---------- Add Operator (helper — generates values, doesn't write anything) ----------
-document.getElementById("ao-pin-random-btn").onclick = () => {
-  document.getElementById("ao-pin").value = String(Math.floor(1000 + Math.random() * 9000));
-};
-
-document.getElementById("ao-generate-btn").onclick = () => {
-  const name = document.getElementById("ao-name").value.trim();
-  const code = document.getElementById("ao-code").value.trim().toLowerCase();
-  const level = document.getElementById("ao-level").value;
-  const pin = document.getElementById("ao-pin").value.trim();
-
-  if (!name || !code || !/^\d{4}$/.test(pin)) {
-    toast("Name, code and a 4-digit PIN are required", "err");
-    return;
-  }
-
-  document.getElementById("ao-out-email").textContent = `${code}@mdpl.local`;
-  document.getElementById("ao-out-pin").textContent = pin;
-  document.getElementById("ao-out-code").textContent = code;
-  document.getElementById("ao-out-name").textContent = name;
-  document.getElementById("ao-out-level").textContent = level;
-  document.getElementById("ao-output").classList.remove("hidden");
-  document.getElementById("ao-copy-btn").classList.remove("hidden");
-};
-
-document.getElementById("ao-copy-btn").onclick = async () => {
-  const code = document.getElementById("ao-out-code").textContent;
-  const pin = document.getElementById("ao-out-pin").textContent;
-  const name = document.getElementById("ao-out-name").textContent;
-  const level = document.getElementById("ao-out-level").textContent;
-  const text = `Email: ${code}@mdpl.local\nPassword: ${pin}\n\ncode: ${code}\nname: ${name}\nlevel: ${level}\nactive: true`;
-  try {
-    await navigator.clipboard.writeText(text);
-    toast("Copied ✓");
-  } catch {
-    toast("Couldn't copy — select the text manually", "err");
-  }
-};
 
 function exportCsv() {
   if (lastRows.length === 0) { toast("Nothing to export", "err"); return; }
