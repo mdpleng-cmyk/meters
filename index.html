@@ -179,7 +179,7 @@
         <div class="grid2">
           <div class="field">
             <label class="field-label">Meter Code</label>
-            <input id="am-code" type="text" placeholder="e.g. AMM-COMP-1-KWH" required />
+            <input id="am-code" type="text" placeholder="auto-fills from Group + Type — edit if you'd like" />
           </div>
           <div class="field">
             <label class="field-label">Name</label>
@@ -868,7 +868,36 @@ document.getElementById("am-type").addEventListener("change", (e) => {
   if (!unitField.value || Object.values(defaults).includes(unitField.value)) {
     unitField.value = defaults[e.target.value] || "";
   }
+  updateSuggestedMeterCode();
 });
+document.getElementById("am-group").addEventListener("input", updateSuggestedMeterCode);
+
+// Auto-fills the code as DEPT-TYPE-## (e.g. BLR-ENERGY-02), incrementing
+// past whatever's already used for that department+type. Stops
+// auto-filling the moment the admin types into the code field directly.
+let amCodeManuallyEdited = false;
+document.getElementById("am-code").addEventListener("input", () => { amCodeManuallyEdited = true; });
+
+function updateSuggestedMeterCode() {
+  if (amCodeManuallyEdited) return;
+  const group = document.getElementById("am-group").value.trim();
+  const type = document.getElementById("am-type").value;
+  if (!group) { document.getElementById("am-code").value = ""; return; }
+
+  const deptPrefix = group.slice(0, 3).toUpperCase();
+  const typeSuffix = type.toUpperCase();
+  const base = `${deptPrefix}-${typeSuffix}`;
+
+  const existingNums = state.meters
+    .filter(m => m.meter_code?.toUpperCase().startsWith(base + "-"))
+    .map(m => parseInt(m.meter_code.split("-").pop(), 10))
+    .filter(n => !isNaN(n));
+  const next = existingNums.length ? Math.max(...existingNums) + 1 : 1;
+
+  document.getElementById("am-code").value = `${base}-${String(next).padStart(2, "0")}`;
+}
+
+addMeterToggleBtn.addEventListener("click", () => { amCodeManuallyEdited = false; });
 
 addMeterForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -898,6 +927,7 @@ addMeterForm.addEventListener("submit", async (e) => {
 
   toast(`Added ✓ ${code} — live in tomorrow's queue`);
   addMeterForm.reset();
+  amCodeManuallyEdited = false;
   document.getElementById("am-unit").value = "kWh";
   addMeterToggleBtn.click();
   await loadMeters();
