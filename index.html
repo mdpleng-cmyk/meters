@@ -285,10 +285,10 @@
     <div id="rm-entry-view">
       <div id="rm-trend-box" class="hidden">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <span class="eyebrow">Last 7 Days</span>
+          <span class="eyebrow">Consumption — Last 7 Days</span>
           <span id="rm-trend-change" style="font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700;"></span>
         </div>
-        <svg id="rm-trend-svg" viewBox="0 0 280 56" style="width:100%; height:48px; display:block;"></svg>
+        <svg id="rm-trend-svg" viewBox="0 0 300 74" style="width:100%; height:64px; display:block;"></svg>
       </div>
 
       <span id="rm-view-badge" class="rm-view-badge hidden">Already recorded today</span>
@@ -312,13 +312,19 @@
           <span class="readout-empty">Entered Reading</span>
           <span id="rm-c-reading" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--text);"></span>
         </div>
-        <div id="rm-c-consumption-row" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+        <div id="rm-c-consumption-row" style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px;">
           <span class="readout-empty">Consumption</span>
-          <span id="rm-c-consumption" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--amber);"></span>
+          <span>
+            <span id="rm-c-consumption" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--amber);"></span>
+            <span id="rm-c-consumption-change" style="font-family:'JetBrains Mono',monospace; font-size:11px; margin-left:6px;"></span>
+          </span>
         </div>
-        <div id="rm-c-cost-row" class="hidden" style="display:flex; justify-content:space-between; border-top:1px solid var(--border); padding-top:12px;">
+        <div id="rm-c-cost-row" class="hidden" style="display:flex; justify-content:space-between; align-items:baseline; border-top:1px solid var(--border); padding-top:12px;">
           <span class="readout-empty" id="rm-c-cost-label">Est. Cost</span>
-          <span id="rm-c-cost" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--green);"></span>
+          <span>
+            <span id="rm-c-cost" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--green);"></span>
+            <span id="rm-c-cost-change" style="font-family:'JetBrains Mono',monospace; font-size:11px; margin-left:6px;"></span>
+          </span>
         </div>
       </div>
       <p id="rm-c-warning" class="hidden" style="font-size:12px; color:var(--amber); margin-bottom:12px; text-align:center;">
@@ -617,27 +623,41 @@ async function refreshTileGrid() {
 }
 
 // ------------------------------------------------------------
-// Trend sparkline — last 7 calendar days of readings for a
-// meter (one point per day, most recent reading of that day).
-// Purely a visual aid in the modal; not tied to shift filtering.
+// Trend chart — daily CONSUMPTION (not raw reading value) for
+// the last 7 calendar days. Pulls one extra day beyond the 7 so
+// the oldest shown day's consumption can be derived (reading
+// value delta) if its stored `consumption` happens to be null.
+// Purely a visual aid; not tied to shift filtering.
 // ------------------------------------------------------------
 async function loadMeterTrend(m) {
   const { data, error } = await sb.from("meter_readings")
-    .select("reading_value, reading_date")
+    .select("reading_value, consumption, reading_date")
     .eq("meter_id", m.id)
     .order("reading_date", { ascending: false })
     .order("recorded_at", { ascending: false })
-    .limit(30);
+    .limit(40);
   if (error || !data || data.length === 0) return [];
+
   const perDay = [];
   const seenDates = new Set();
   for (const r of data) {
     if (seenDates.has(r.reading_date)) continue;
     seenDates.add(r.reading_date);
     perDay.push(r);
-    if (perDay.length >= 7) break;
+    if (perDay.length >= 8) break;
   }
-  return perDay.reverse(); // oldest -> newest
+  perDay.reverse(); // oldest -> newest
+
+  const points = [];
+  for (let i = 0; i < perDay.length; i++) {
+    const row = perDay[i];
+    let cons = row.consumption != null ? Number(row.consumption) : null;
+    if (cons === null && i > 0) {
+      cons = Number(row.reading_value) - Number(perDay[i - 1].reading_value);
+    }
+    if (cons !== null) points.push({ reading_date: row.reading_date, consumption: cons });
+  }
+  return points.slice(-7);
 }
 
 function renderTrendSparkline(points) {
@@ -653,22 +673,45 @@ function renderTrendSparkline(points) {
   }
   box.classList.remove("hidden");
 
-  const vals = points.map(p => Number(p.reading_value));
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const w = 280, h = 56, pad = 6;
-  const stepX = vals.length > 1 ? (w - pad * 2) / (vals.length - 1) : 0;
-  const range = (max - min) || 1;
-  const scaleY = v => h - pad - ((v - min) / range) * (h - pad * 2);
+  const vals = points.map(p => p.consumption);
+  const minVal = Math.min(0, ...vals); // always include the 0 baseline
+  const maxVal = Math.max(...vals, 0.0001);
+  const range = (maxVal - minVal) || 1;
 
-  const coords = vals.map((v, i) => [pad + i * stepX, scaleY(v)]);
+  const w = 300, h = 74;
+  const padL = 32, padR = 6, padT = 8, padB = 16;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+  const axisY = padT + plotH; // the 0 (or min) baseline
+
+  const stepX = points.length > 1 ? plotW / (points.length - 1) : 0;
+  const scaleY = v => padT + plotH - ((v - minVal) / range) * plotH;
+
+  const coords = vals.map((v, i) => [padL + i * stepX, scaleY(v)]);
   const pathD = coords.map((c, i) => (i === 0 ? "M" : "L") + c[0].toFixed(1) + "," + c[1].toFixed(1)).join(" ");
   const dots = coords.map((c, i) => {
     const isLast = i === coords.length - 1;
     return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="${isLast ? 3.5 : 2.5}" style="fill:${isLast ? "var(--amber)" : "var(--text-muted)"};" />`;
   }).join("");
 
-  svg.innerHTML = `<path d="${pathD}" style="fill:none; stroke:var(--amber); stroke-width:2; stroke-linejoin:round; stroke-linecap:round;" />${dots}`;
+  const axisLines = `
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${axisY}" style="stroke:var(--border); stroke-width:1;" />
+    <line x1="${padL}" y1="${axisY}" x2="${w - padR}" y2="${axisY}" style="stroke:var(--border); stroke-width:1;" />
+  `;
+
+  const yLabels = `
+    <text x="${padL - 4}" y="${padT + 6}" text-anchor="end" style="font-family:'JetBrains Mono',monospace; font-size:8px; fill:var(--text-muted);">${maxVal.toFixed(1)}</text>
+    <text x="${padL - 4}" y="${axisY + 3}" text-anchor="end" style="font-family:'JetBrains Mono',monospace; font-size:8px; fill:var(--text-muted);">${minVal.toFixed(1)}</text>
+  `;
+
+  const labelIdxs = [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
+  const xLabels = labelIdxs.map(i => {
+    const d = new Date(points[i].reading_date + "T00:00:00");
+    return `<text x="${coords[i][0].toFixed(1)}" y="${h - 2}" text-anchor="middle" style="font-family:'JetBrains Mono',monospace; font-size:8px; fill:var(--text-muted);">${d.getDate()}</text>`;
+  }).join("");
+
+  svg.innerHTML = axisLines + yLabels + xLabels +
+    `<path d="${pathD}" style="fill:none; stroke:var(--amber); stroke-width:2; stroke-linejoin:round; stroke-linecap:round;" />${dots}`;
 
   const first = vals[0], last = vals[vals.length - 1];
   if (first === 0) {
@@ -704,6 +747,7 @@ async function openTileModal(m, readOnly = false) {
   const consumptionBox = document.getElementById("rm-consumption-box");
   const prevConsumptionEl = document.getElementById("rm-prev-consumption");
   prevConsumptionEl.classList.add("hidden");
+  state.tileModalLastConsumption = null;
 
   // Trend chart loads for both modes; render once fetched.
   document.getElementById("rm-trend-box").classList.add("hidden");
@@ -757,6 +801,7 @@ async function openTileModal(m, readOnly = false) {
     if (lastConsumption === null && data && prior) {
       lastConsumption = Number(data.reading_value) - Number(prior.reading_value);
     }
+    state.tileModalLastConsumption = lastConsumption;
 
     if (data && lastConsumption !== null) {
       const dayLabel = data.reading_date === yesterdayStr()
@@ -845,6 +890,23 @@ document.getElementById("rm-review-btn").onclick = () => {
   const consRow = document.getElementById("rm-c-consumption-row");
   const costRow = document.getElementById("rm-c-cost-row");
   const warning = document.getElementById("rm-c-warning");
+  const consChangeEl = document.getElementById("rm-c-consumption-change");
+  const costChangeEl = document.getElementById("rm-c-cost-change");
+
+  // % change vs the last recorded consumption for this meter (same
+  // rate applies to both, so cost moves by the same %).
+  const lastConsumption = state.tileModalLastConsumption;
+  let changeText = "";
+  let changeColor = "var(--text-muted)";
+  if (consumption !== null && lastConsumption !== null && lastConsumption !== 0) {
+    const pct = ((consumption - lastConsumption) / Math.abs(lastConsumption)) * 100;
+    changeText = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
+    changeColor = pct >= 0 ? "var(--green)" : "var(--red)";
+  }
+  consChangeEl.textContent = changeText;
+  consChangeEl.style.color = changeColor;
+  costChangeEl.textContent = changeText;
+  costChangeEl.style.color = changeColor;
 
   if (consumption !== null) {
     consRow.classList.remove("hidden");
