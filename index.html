@@ -275,10 +275,11 @@
   <div class="modal-box">
     <div class="eyebrow" id="rm-code"></div>
     <p style="font-family:'Oswald',sans-serif; font-size:16px; margin:2px 0 10px;" id="rm-name"></p>
-    <p class="readout-empty" style="margin:0 0 12px;">
+    <p class="readout-empty" style="margin:0 0 4px;">
       <span id="rm-location"></span> &middot;
       Previous: <span id="rm-previous" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--text);"></span> <span id="rm-unit"></span>
     </p>
+    <p id="rm-prev-consumption" class="readout-empty hidden" style="margin:0 0 12px;"></p>
 
     <!-- ENTRY / VIEW-ONLY VIEW -->
     <div id="rm-entry-view">
@@ -377,6 +378,11 @@ function defaultShift() {
 }
 function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+function yesterdayStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 // ============================================================
@@ -696,6 +702,8 @@ async function openTileModal(m, readOnly = false) {
   const readonlyNote = document.getElementById("rm-readonly-note");
   const viewBadge = document.getElementById("rm-view-badge");
   const consumptionBox = document.getElementById("rm-consumption-box");
+  const prevConsumptionEl = document.getElementById("rm-prev-consumption");
+  prevConsumptionEl.classList.add("hidden");
 
   // Trend chart loads for both modes; render once fetched.
   document.getElementById("rm-trend-box").classList.add("hidden");
@@ -726,9 +734,41 @@ async function openTileModal(m, readOnly = false) {
       consumptionBox.classList.add("hidden");
     }
   } else {
-    const { data } = await sb.from("latest_meter_readings").select("reading_value").eq("meter_id", m.id).maybeSingle();
+    // Query meter_readings directly (not just the latest_meter_readings
+    // view) so we also get consumption context. Pull the last TWO
+    // readings — if the most recent row's stored `consumption` is
+    // null for any reason, fall back to computing it from these two
+    // values ourselves, rather than silently showing nothing.
+    const { data: recent, error: recentErr } = await sb.from("meter_readings")
+      .select("reading_value, consumption, reading_date")
+      .eq("meter_id", m.id)
+      .order("reading_date", { ascending: false })
+      .order("recorded_at", { ascending: false })
+      .limit(2);
+
+    if (recentErr) console.error("meter_readings lookup failed:", recentErr);
+    const data = recent && recent[0] ? recent[0] : null;
+    const prior = recent && recent[1] ? recent[1] : null;
+
     state.tileModalPrevious = data ? Number(data.reading_value) : null;
     document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
+
+    let lastConsumption = data && data.consumption != null ? Number(data.consumption) : null;
+    if (lastConsumption === null && data && prior) {
+      lastConsumption = Number(data.reading_value) - Number(prior.reading_value);
+    }
+
+    if (data && lastConsumption !== null) {
+      const dayLabel = data.reading_date === yesterdayStr()
+        ? "Yesterday"
+        : new Date(data.reading_date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      prevConsumptionEl.textContent = `${dayLabel}'s consumption: ${lastConsumption.toFixed(2)} ${m.unit}`;
+      prevConsumptionEl.style.color = lastConsumption < 0 ? "var(--red)" : "var(--text-muted)";
+    } else {
+      prevConsumptionEl.textContent = "No prior consumption data yet";
+      prevConsumptionEl.style.color = "var(--text-muted)";
+    }
+    prevConsumptionEl.classList.remove("hidden");
 
     // Prefill with the previous reading so the operator can just
     // backspace the digits that changed, instead of retyping the whole value.
