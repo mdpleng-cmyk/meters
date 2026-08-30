@@ -72,7 +72,7 @@
   .round-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
   .round-tile { border-radius: var(--radius); padding: 14px 12px; border: 1px solid var(--border); background: var(--panel-raised); cursor: pointer; text-align: left; }
   .round-tile:active { transform: translateY(1px); }
-  .round-tile.done { background: var(--green-bg); border-color: rgba(62,207,142,0.35); cursor: default; }
+  .round-tile.done { background: var(--green-bg); border-color: rgba(62,207,142,0.35); }
   .round-tile .rt-name { font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.3; }
   .round-tile .rt-code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .round-tile .rt-status { font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 8px; }
@@ -81,6 +81,10 @@
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 100; }
   .modal-overlay.open { display: flex; }
   .modal-box { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; width: 88%; max-width: 380px; }
+  #rm-reading-input[readonly] { opacity: 0.7; border-style: dashed; }
+  #rm-trend-box { background: var(--panel-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px; }
+  #rm-readonly-note { font-size: 12px; color: var(--text-muted); text-align: center; margin: 0 0 12px; }
+  .rm-view-badge { display: inline-block; font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--amber); background: rgba(255,176,32,0.12); border: 1px solid var(--amber-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -131,7 +135,7 @@
         </select>
       </div>
       <span class="section-label" style="margin:0;" id="tile-title">Today's Round</span>
-      <p class="readout-empty" style="margin-top:4px;">Tap a meter, add its reading. Done ones turn green.</p>
+      <p class="readout-empty" style="margin-top:4px;">Tap a meter, add its reading. Done ones turn green — tap them again to review.</p>
       <div class="progress-track"><div class="progress-fill" id="tile-progress-fill" style="width:0%;"></div></div>
       <p class="readout-empty" style="margin-top:6px;" id="tile-progress-text">0 / 0 read</p>
     </div>
@@ -276,14 +280,24 @@
       Previous: <span id="rm-previous" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--text);"></span> <span id="rm-unit"></span>
     </p>
 
-    <!-- ENTRY VIEW -->
+    <!-- ENTRY / VIEW-ONLY VIEW -->
     <div id="rm-entry-view">
-      <input id="rm-reading-input" type="number" inputmode="decimal" step="any" placeholder="0.00"
-        style="padding:16px; font-size:28px; text-align:center; margin-bottom:12px;" />
+      <div id="rm-trend-box" class="hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span class="eyebrow">Last 7 Days</span>
+          <span id="rm-trend-change" style="font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700;"></span>
+        </div>
+        <svg id="rm-trend-svg" viewBox="0 0 280 56" style="width:100%; height:48px; display:block;"></svg>
+      </div>
+
+      <span id="rm-view-badge" class="rm-view-badge hidden">Already recorded today</span>
+      <input id="rm-reading-input" type="text" inputmode="decimal" placeholder="0.00"
+        style="padding:16px; font-size:28px; text-align:center; margin-bottom:12px; display:block;" />
       <div id="rm-consumption-box" class="hidden" style="border-radius:var(--radius); padding:12px; text-align:center; margin-bottom:12px;">
         <div class="eyebrow">Est. Consumption</div>
         <p id="rm-consumption-value" class="hero-number" style="font-size:20px; margin:4px 0 0;"></p>
       </div>
+      <p id="rm-readonly-note" class="hidden"></p>
       <div style="display:flex; gap:8px;">
         <button id="rm-review-btn" class="primary big" style="flex:1;">Review</button>
         <button id="rm-cancel-btn" style="flex:1;">Cancel</button>
@@ -340,6 +354,7 @@ const state = {
   tileModalMeter: null,
   tileModalPrevious: null,
   tileModalShiftTag: null,
+  tileModalReadOnly: false,
 };
 
 // ============================================================
@@ -585,9 +600,9 @@ async function refreshTileGrid() {
     tile.innerHTML = `
       <div class="rt-name">${m.name}</div>
       <div class="rt-code">${m.meter_code}</div>
-      <div class="rt-status" style="color:${isDone ? "var(--green)" : "var(--text-muted)"};">${isDone ? "✓ Done" : "Tap to read"}</div>
+      <div class="rt-status" style="color:${isDone ? "var(--green)" : "var(--text-muted)"};">${isDone ? "✓ Done — tap to review" : "Tap to read"}</div>
     `;
-    if (!isDone) tile.onclick = () => openTileModal(m);
+    tile.onclick = () => openTileModal(m, isDone);
     grid.appendChild(tile);
   });
 
@@ -595,35 +610,158 @@ async function refreshTileGrid() {
   document.getElementById("tile-progress-fill").style.width = `${Math.round((doneCount / tileMeters.length) * 100)}%`;
 }
 
-async function openTileModal(m) {
+// ------------------------------------------------------------
+// Trend sparkline — last 7 calendar days of readings for a
+// meter (one point per day, most recent reading of that day).
+// Purely a visual aid in the modal; not tied to shift filtering.
+// ------------------------------------------------------------
+async function loadMeterTrend(m) {
+  const { data, error } = await sb.from("meter_readings")
+    .select("reading_value, reading_date")
+    .eq("meter_id", m.id)
+    .order("reading_date", { ascending: false })
+    .order("recorded_at", { ascending: false })
+    .limit(30);
+  if (error || !data || data.length === 0) return [];
+  const perDay = [];
+  const seenDates = new Set();
+  for (const r of data) {
+    if (seenDates.has(r.reading_date)) continue;
+    seenDates.add(r.reading_date);
+    perDay.push(r);
+    if (perDay.length >= 7) break;
+  }
+  return perDay.reverse(); // oldest -> newest
+}
+
+function renderTrendSparkline(points) {
+  const box = document.getElementById("rm-trend-box");
+  const svg = document.getElementById("rm-trend-svg");
+  const changeEl = document.getElementById("rm-trend-change");
+
+  if (!points || points.length < 2) {
+    box.classList.add("hidden");
+    svg.innerHTML = "";
+    changeEl.textContent = "";
+    return;
+  }
+  box.classList.remove("hidden");
+
+  const vals = points.map(p => Number(p.reading_value));
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const w = 280, h = 56, pad = 6;
+  const stepX = vals.length > 1 ? (w - pad * 2) / (vals.length - 1) : 0;
+  const range = (max - min) || 1;
+  const scaleY = v => h - pad - ((v - min) / range) * (h - pad * 2);
+
+  const coords = vals.map((v, i) => [pad + i * stepX, scaleY(v)]);
+  const pathD = coords.map((c, i) => (i === 0 ? "M" : "L") + c[0].toFixed(1) + "," + c[1].toFixed(1)).join(" ");
+  const dots = coords.map((c, i) => {
+    const isLast = i === coords.length - 1;
+    return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="${isLast ? 3.5 : 2.5}" style="fill:${isLast ? "var(--amber)" : "var(--text-muted)"};" />`;
+  }).join("");
+
+  svg.innerHTML = `<path d="${pathD}" style="fill:none; stroke:var(--amber); stroke-width:2; stroke-linejoin:round; stroke-linecap:round;" />${dots}`;
+
+  const first = vals[0], last = vals[vals.length - 1];
+  if (first === 0) {
+    changeEl.textContent = "";
+  } else {
+    const pct = ((last - first) / Math.abs(first)) * 100;
+    const arrow = pct >= 0 ? "▲" : "▼";
+    changeEl.textContent = `${arrow} ${Math.abs(pct).toFixed(1)}%`;
+    changeEl.style.color = pct >= 0 ? "var(--green)" : "var(--red)";
+  }
+}
+
+async function openTileModal(m, readOnly = false) {
   state.tileModalMeter = m;
   state.tileModalShiftTag = expectedShiftTag(m);
-
-  const { data } = await sb.from("latest_meter_readings").select("reading_value").eq("meter_id", m.id).maybeSingle();
-  state.tileModalPrevious = data ? Number(data.reading_value) : null;
+  state.tileModalReadOnly = readOnly;
 
   document.getElementById("rm-code").textContent = m.meter_code;
   document.getElementById("rm-name").textContent = m.name;
   document.getElementById("rm-location").textContent = m.location || "—";
-  document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
   document.getElementById("rm-unit").textContent = m.unit;
 
-  // Reset to Entry View
+  // Reset to Entry/View View
   document.getElementById("rm-entry-view").classList.remove("hidden");
   document.getElementById("rm-confirm-view").classList.add("hidden");
+  document.getElementById("round-modal").classList.add("open");
 
   const input = document.getElementById("rm-reading-input");
-  input.value = "";
-  document.getElementById("rm-consumption-box").classList.add("hidden");
+  const reviewBtn = document.getElementById("rm-review-btn");
+  const cancelBtn = document.getElementById("rm-cancel-btn");
+  const readonlyNote = document.getElementById("rm-readonly-note");
+  const viewBadge = document.getElementById("rm-view-badge");
+  const consumptionBox = document.getElementById("rm-consumption-box");
+
+  // Trend chart loads for both modes; render once fetched.
+  document.getElementById("rm-trend-box").classList.add("hidden");
+  loadMeterTrend(m).then(renderTrendSparkline);
+
+  if (readOnly) {
+    const { data } = await sb.from("meter_readings")
+      .select("reading_value, previous_reading, consumption, recorded_at")
+      .eq("meter_id", m.id).eq("reading_date", todayStr()).eq("shift", state.tileModalShiftTag)
+      .maybeSingle();
+
+    state.tileModalPrevious = data && data.previous_reading != null ? Number(data.previous_reading) : null;
+    document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
+
+    input.value = data ? data.reading_value : "";
+    input.readOnly = true;
+    viewBadge.classList.remove("hidden");
+    reviewBtn.classList.add("hidden");
+    cancelBtn.textContent = "Close";
+    readonlyNote.classList.remove("hidden");
+    readonlyNote.textContent = data ? `Recorded at ${fmtTime(data.recorded_at)}. Spotted a mistake? Ask Control Room to correct it.` : "Couldn't find today's reading.";
+
+    if (data && data.consumption != null) {
+      consumptionBox.classList.remove("hidden");
+      consumptionBox.style.background = data.consumption < 0 ? "var(--red-bg)" : "var(--green-bg)";
+      document.getElementById("rm-consumption-value").textContent = `${Number(data.consumption).toFixed(2)} ${m.unit}`;
+    } else {
+      consumptionBox.classList.add("hidden");
+    }
+  } else {
+    const { data } = await sb.from("latest_meter_readings").select("reading_value").eq("meter_id", m.id).maybeSingle();
+    state.tileModalPrevious = data ? Number(data.reading_value) : null;
+    document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
+
+    // Prefill with the previous reading so the operator can just
+    // backspace the digits that changed, instead of retyping the whole value.
+    input.value = state.tileModalPrevious !== null ? state.tileModalPrevious : "";
+    input.readOnly = false;
+    viewBadge.classList.add("hidden");
+    reviewBtn.classList.remove("hidden");
+    cancelBtn.textContent = "Cancel";
+    readonlyNote.classList.add("hidden");
+    updateTileModalConsumption();
+  }
+
   updateReviewButton();
 
-  document.getElementById("round-modal").classList.add("open");
-  input.focus();
+  if (!readOnly) {
+    input.focus();
+    const len = input.value.length;
+    requestAnimationFrame(() => { try { input.setSelectionRange(len, len); } catch (e) {} });
+  }
 }
 
-document.getElementById("rm-reading-input").addEventListener("input", updateTileModalConsumption);
+document.getElementById("rm-reading-input").addEventListener("input", (e) => {
+  // Keep it numeric (digits + one decimal point) since this is a
+  // text input now (needed for cursor placement on prefill).
+  let v = e.target.value.replace(/[^0-9.]/g, "");
+  const parts = v.split(".");
+  if (parts.length > 2) v = parts[0] + "." + parts.slice(1).join("");
+  if (v !== e.target.value) e.target.value = v;
+  updateTileModalConsumption();
+});
 
 function updateTileModalConsumption() {
+  if (state.tileModalReadOnly) return;
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const box = document.getElementById("rm-consumption-box");
   if (isNaN(val)) { box.classList.add("hidden"); updateReviewButton(); return; }
@@ -647,10 +785,12 @@ function updateReviewButton() {
 document.getElementById("rm-cancel-btn").onclick = () => {
   document.getElementById("round-modal").classList.remove("open");
   state.tileModalMeter = null;
+  state.tileModalReadOnly = false;
 };
 
 // Transition to Confirmation Screen
 document.getElementById("rm-review-btn").onclick = () => {
+  if (state.tileModalReadOnly) return;
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const m = state.tileModalMeter;
   if (isNaN(val) || !m) return;
