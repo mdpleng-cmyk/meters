@@ -73,6 +73,7 @@
   .round-tile { border-radius: var(--radius); padding: 14px 12px; border: 1px solid var(--border); background: var(--panel-raised); cursor: pointer; text-align: left; }
   .round-tile:active { transform: translateY(1px); }
   .round-tile.done { background: var(--green-bg); border-color: rgba(62,207,142,0.35); }
+  .round-tile.hourly-tile { border-color: var(--amber-dim); }
   .round-tile .rt-name { font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.3; }
   .round-tile .rt-code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .round-tile .rt-status { font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 8px; }
@@ -136,8 +137,10 @@
       </div>
       <span class="section-label" style="margin:0;" id="tile-title">Today's Round</span>
       <p class="readout-empty" style="margin-top:4px;">Tap a meter, add its reading. Done ones turn green — tap them again to review.</p>
-      <div class="progress-track"><div class="progress-fill" id="tile-progress-fill" style="width:0%;"></div></div>
-      <p class="readout-empty" style="margin-top:6px;" id="tile-progress-text">0 / 0 read</p>
+      <div id="tile-progress-wrap">
+        <div class="progress-track"><div class="progress-fill" id="tile-progress-fill" style="width:0%;"></div></div>
+        <p class="readout-empty" style="margin-top:6px;" id="tile-progress-text">0 / 0 read</p>
+      </div>
     </div>
     <div id="tile-grid" class="round-grid"></div>
     <p id="tile-empty" class="readout-empty hidden" style="text-align:center; padding:20px 0;">No meters set up for this yet — ask an Admin to add one.</p>
@@ -159,6 +162,7 @@
             <option>Evening</option>
             <option>Night</option>
             <option>Round</option>
+            <option>Hourly</option>
           </select>
         </div>
         <div>
@@ -228,12 +232,23 @@
             <select id="am-reading-mode">
               <option value="shift_wise">Shift-wise (per shift)</option>
               <option value="daily_round">Daily round (once a day)</option>
+              <option value="hourly">Hourly (log anytime, no lock)</option>
             </select>
           </div>
           <div class="field">
-            <label class="field-label">Cost per Unit (₹) — optional override</label>
-            <input id="am-cost" type="number" step="any" placeholder="leave blank to use the shared rate" />
+            <label class="field-label">Value Type</label>
+            <select id="am-value-type">
+              <option value="cumulative">Cumulative (calculates consumption)</option>
+              <option value="gauge">Gauge (current value only, e.g. level)</option>
+            </select>
           </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Cost per Unit (₹) — optional, ignored for Gauge meters</label>
+            <input id="am-cost" type="number" step="any" placeholder="leave blank to use the shared per-type rate" />
+          </div>
+          <div class="field"></div>
         </div>
         <div style="display:flex; gap:8px; margin-top:4px;">
           <button type="submit" id="am-submit-btn" class="primary" style="flex:1;">Add Meter</button>
@@ -285,7 +300,7 @@
     <div id="rm-entry-view">
       <div id="rm-trend-box" class="hidden">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <span class="eyebrow">Consumption — Last 7 Days</span>
+          <span class="eyebrow" id="rm-trend-title">Consumption — Last 7 Days</span>
           <span id="rm-trend-change" style="font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700;"></span>
         </div>
         <svg id="rm-trend-svg" viewBox="0 0 300 74" style="width:100%; height:64px; display:block;"></svg>
@@ -362,6 +377,7 @@ const state = {
   tileModalPrevious: null,
   tileModalShiftTag: null,
   tileModalReadOnly: false,
+  tileModalIsGauge: false,
 };
 
 // ============================================================
@@ -544,9 +560,10 @@ function setTab(tab) {
 // TILE VIEW — used by every reading-taking level (Apprentice,
 // Operator, Utility Operator). Round levels: one flat list, done
 // = read today. Field levels: tiles scoped to the operator's
-// department (meter_group), mixing daily_round and shift_wise
-// meters in one grid — each tile's own reading_mode decides
-// whether it's tracked per-day ("Round") or per-shift.
+// department (meter_group), mixing daily_round, shift_wise, and
+// hourly meters in one grid — each tile's own reading_mode
+// decides whether it's tracked per-day ("Round"), per-shift, or
+// freely loggable any number of times ("Hourly", never locks).
 // ============================================================
 async function loadMeters() {
   const { data, error } = await sb.from("meters").select("*").eq("active", true).order("meter_code");
@@ -563,7 +580,9 @@ async function loadCostRates() {
 document.getElementById("tile-shift-select").addEventListener("change", refreshTileGrid);
 
 function expectedShiftTag(m) {
-  return m.reading_mode === "daily_round" ? "Round" : document.getElementById("tile-shift-select").value;
+  if (m.reading_mode === "daily_round") return "Round";
+  if (m.reading_mode === "hourly") return "Hourly";
+  return document.getElementById("tile-shift-select").value;
 }
 
 function departmentMeters() {
@@ -587,47 +606,78 @@ async function refreshTileGrid() {
   if (tileMeters.length === 0) {
     grid.innerHTML = "";
     emptyMsg.classList.remove("hidden");
-    document.getElementById("tile-progress-text").textContent = "0 / 0 read";
-    document.getElementById("tile-progress-fill").style.width = "0%";
+    document.getElementById("tile-progress-wrap").classList.add("hidden");
     return;
   }
   emptyMsg.classList.add("hidden");
 
   // One query for today's readings across every meter in this view,
   // regardless of shift — then check each meter against its own
-  // expected tag (Round, or the currently selected shift).
-  const { data, error } = await sb.from("meter_readings").select("meter_id, shift")
-    .eq("reading_date", todayStr()).in("meter_id", tileMeters.map(m => m.id));
+  // expected tag (Round, the currently selected shift, or Hourly).
+  // Also track the latest recorded_at per meter for the free-log
+  // "last logged at HH:MM" display on Hourly tiles.
+  const { data, error } = await sb.from("meter_readings").select("meter_id, shift, recorded_at")
+    .eq("reading_date", todayStr()).in("meter_id", tileMeters.map(m => m.id))
+    .order("recorded_at", { ascending: false });
   const readMap = {};
-  (error ? [] : data).forEach(r => { (readMap[r.meter_id] ||= new Set()).add(r.shift); });
+  (error ? [] : data).forEach(r => {
+    const entry = (readMap[r.meter_id] ||= { tags: new Set(), lastTime: null });
+    entry.tags.add(r.shift);
+    if (!entry.lastTime) entry.lastTime = r.recorded_at; // rows are ordered newest-first
+  });
 
   grid.innerHTML = "";
   let doneCount = 0;
+  // Hourly meters are free-log (no lock), so they don't count toward
+  // the round/shift "X / Y read" progress bar.
+  const trackedMeters = tileMeters.filter(m => m.reading_mode !== "hourly");
+
   tileMeters.forEach(m => {
-    const isDone = !!readMap[m.id]?.has(expectedShiftTag(m));
-    if (isDone) doneCount++;
+    const isHourly = m.reading_mode === "hourly";
+    const entry = readMap[m.id];
     const tile = document.createElement("button");
     tile.type = "button";
-    tile.className = "round-tile" + (isDone ? " done" : "");
-    tile.innerHTML = `
-      <div class="rt-name">${m.name}</div>
-      <div class="rt-code">${m.meter_code}</div>
-      <div class="rt-status" style="color:${isDone ? "var(--green)" : "var(--text-muted)"};">${isDone ? "✓ Done — tap to review" : "Tap to read"}</div>
-    `;
-    tile.onclick = () => openTileModal(m, isDone);
+
+    if (isHourly) {
+      tile.className = "round-tile hourly-tile";
+      const statusText = entry?.lastTime ? `Last logged ${fmtTime(entry.lastTime)} — tap to log again` : "Tap to log";
+      tile.innerHTML = `
+        <div class="rt-name">${m.name}</div>
+        <div class="rt-code">${m.meter_code}</div>
+        <div class="rt-status" style="color:${entry?.lastTime ? "var(--amber)" : "var(--text-muted)"};">${statusText}</div>
+      `;
+      tile.onclick = () => openTileModal(m, false);
+    } else {
+      const isDone = !!entry?.tags.has(expectedShiftTag(m));
+      if (isDone) doneCount++;
+      tile.className = "round-tile" + (isDone ? " done" : "");
+      tile.innerHTML = `
+        <div class="rt-name">${m.name}</div>
+        <div class="rt-code">${m.meter_code}</div>
+        <div class="rt-status" style="color:${isDone ? "var(--green)" : "var(--text-muted)"};">${isDone ? "✓ Done — tap to review" : "Tap to read"}</div>
+      `;
+      tile.onclick = () => openTileModal(m, isDone);
+    }
     grid.appendChild(tile);
   });
 
-  document.getElementById("tile-progress-text").textContent = `${doneCount} / ${tileMeters.length} read`;
-  document.getElementById("tile-progress-fill").style.width = `${Math.round((doneCount / tileMeters.length) * 100)}%`;
+  const progressWrap = document.getElementById("tile-progress-wrap");
+  if (trackedMeters.length === 0) {
+    progressWrap.classList.add("hidden");
+  } else {
+    progressWrap.classList.remove("hidden");
+    document.getElementById("tile-progress-text").textContent = `${doneCount} / ${trackedMeters.length} read`;
+    document.getElementById("tile-progress-fill").style.width = `${Math.round((doneCount / trackedMeters.length) * 100)}%`;
+  }
 }
 
 // ------------------------------------------------------------
 // Trend chart — daily CONSUMPTION (not raw reading value) for
-// the last 7 calendar days. Pulls one extra day beyond the 7 so
-// the oldest shown day's consumption can be derived (reading
-// value delta) if its stored `consumption` happens to be null.
-// Purely a visual aid; not tied to shift filtering.
+// the last 7 calendar days, for cumulative meters. Pulls one
+// extra day beyond the 7 so the oldest shown day's consumption
+// can be derived (reading value delta) if its stored
+// `consumption` happens to be null. Purely a visual aid; not
+// tied to shift filtering.
 // ------------------------------------------------------------
 async function loadMeterTrend(m) {
   const { data, error } = await sb.from("meter_readings")
@@ -660,7 +710,25 @@ async function loadMeterTrend(m) {
   return points.slice(-7);
 }
 
-function renderTrendSparkline(points) {
+// ------------------------------------------------------------
+// Value trend — for Gauge meters. No consumption math applies,
+// so this just plots the last 7 raw readings in the order they
+// were recorded (not deduped by day — a gauge meter, especially
+// Hourly, can have several readings per day and each one matters).
+// ------------------------------------------------------------
+async function loadMeterValueTrend(m) {
+  const { data, error } = await sb.from("meter_readings")
+    .select("reading_value, recorded_at")
+    .eq("meter_id", m.id)
+    .order("recorded_at", { ascending: false })
+    .limit(7);
+  if (error || !data || data.length === 0) return [];
+  return data.reverse().map(r => ({ reading_date: r.recorded_at, consumption: Number(r.reading_value) }));
+}
+
+function renderTrendSparkline(points, opts = {}) {
+  const zeroBaseline = opts.zeroBaseline !== false;
+  const isTimestamped = !!opts.timeLabels;
   const box = document.getElementById("rm-trend-box");
   const svg = document.getElementById("rm-trend-svg");
   const changeEl = document.getElementById("rm-trend-change");
@@ -674,15 +742,15 @@ function renderTrendSparkline(points) {
   box.classList.remove("hidden");
 
   const vals = points.map(p => p.consumption);
-  const minVal = Math.min(0, ...vals); // always include the 0 baseline
-  const maxVal = Math.max(...vals, 0.0001);
+  const minVal = zeroBaseline ? Math.min(0, ...vals) : Math.min(...vals);
+  const maxVal = zeroBaseline ? Math.max(...vals, 0.0001) : Math.max(...vals);
   const range = (maxVal - minVal) || 1;
 
   const w = 300, h = 74;
   const padL = 32, padR = 6, padT = 8, padB = 16;
   const plotW = w - padL - padR;
   const plotH = h - padT - padB;
-  const axisY = padT + plotH; // the 0 (or min) baseline
+  const axisY = zeroBaseline ? padT + plotH : null;
 
   const stepX = points.length > 1 ? plotW / (points.length - 1) : 0;
   const scaleY = v => padT + plotH - ((v - minVal) / range) * plotH;
@@ -694,20 +762,29 @@ function renderTrendSparkline(points) {
     return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="${isLast ? 3.5 : 2.5}" style="fill:${isLast ? "var(--amber)" : "var(--text-muted)"};" />`;
   }).join("");
 
-  const axisLines = `
+  const axisLines = zeroBaseline ? `
     <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${axisY}" style="stroke:var(--border); stroke-width:1;" />
     <line x1="${padL}" y1="${axisY}" x2="${w - padR}" y2="${axisY}" style="stroke:var(--border); stroke-width:1;" />
+  ` : `
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + plotH}" style="stroke:var(--border); stroke-width:1;" />
+    <line x1="${padL}" y1="${padT + plotH}" x2="${w - padR}" y2="${padT + plotH}" style="stroke:var(--border); stroke-width:1;" />
   `;
 
   const yLabels = `
     <text x="${padL - 4}" y="${padT + 6}" text-anchor="end" style="font-family:'JetBrains Mono',monospace; font-size:8px; fill:var(--text-muted);">${maxVal.toFixed(1)}</text>
-    <text x="${padL - 4}" y="${axisY + 3}" text-anchor="end" style="font-family:'JetBrains Mono',monospace; font-size:8px; fill:var(--text-muted);">${minVal.toFixed(1)}</text>
+    <text x="${padL - 4}" y="${padT + plotH + 3}" text-anchor="end" style="font-family:'JetBrains Mono',monospace; font-size:8px; fill:var(--text-muted);">${minVal.toFixed(1)}</text>
   `;
 
   const labelIdxs = [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
   const xLabels = labelIdxs.map(i => {
-    const d = new Date(points[i].reading_date + "T00:00:00");
-    return `<text x="${coords[i][0].toFixed(1)}" y="${h - 2}" text-anchor="middle" style="font-family:'JetBrains Mono',monospace; font-size:8px; fill:var(--text-muted);">${d.getDate()}</text>`;
+    let label;
+    if (isTimestamped) {
+      label = fmtTime(points[i].reading_date);
+    } else {
+      const d = new Date(points[i].reading_date + "T00:00:00");
+      label = String(d.getDate());
+    }
+    return `<text x="${coords[i][0].toFixed(1)}" y="${h - 2}" text-anchor="middle" style="font-family:'JetBrains Mono',monospace; font-size:8px; fill:var(--text-muted);">${label}</text>`;
   }).join("");
 
   svg.innerHTML = axisLines + yLabels + xLabels +
@@ -728,6 +805,9 @@ async function openTileModal(m, readOnly = false) {
   state.tileModalMeter = m;
   state.tileModalShiftTag = expectedShiftTag(m);
   state.tileModalReadOnly = readOnly;
+  const isGauge = m.value_type === "gauge";
+  state.tileModalIsGauge = isGauge;
+  const isHourly = m.reading_mode === "hourly";
 
   document.getElementById("rm-code").textContent = m.meter_code;
   document.getElementById("rm-name").textContent = m.name;
@@ -749,11 +829,21 @@ async function openTileModal(m, readOnly = false) {
   prevConsumptionEl.classList.add("hidden");
   state.tileModalLastConsumption = null;
 
-  // Trend chart loads for both modes; render once fetched.
+  // Trend chart: consumption trend for cumulative meters, raw value
+  // trend for gauge meters. Loads for both modes; renders once fetched.
   document.getElementById("rm-trend-box").classList.add("hidden");
-  loadMeterTrend(m).then(renderTrendSparkline);
+  const trendTitleEl = document.getElementById("rm-trend-title");
+  if (isGauge) {
+    trendTitleEl.textContent = "Last 7 Readings";
+    loadMeterValueTrend(m).then(pts => renderTrendSparkline(pts, { zeroBaseline: false, timeLabels: true }));
+  } else {
+    trendTitleEl.textContent = "Consumption — Last 7 Days";
+    loadMeterTrend(m).then(pts => renderTrendSparkline(pts, { zeroBaseline: true, timeLabels: false }));
+  }
 
   if (readOnly) {
+    // Gauge meters and Hourly meters never open read-only (Hourly never
+    // locks; a "done" Round/Shift gauge tile still just shows the value).
     const { data } = await sb.from("meter_readings")
       .select("reading_value, previous_reading, consumption, recorded_at")
       .eq("meter_id", m.id).eq("reading_date", todayStr()).eq("shift", state.tileModalShiftTag)
@@ -770,13 +860,34 @@ async function openTileModal(m, readOnly = false) {
     readonlyNote.classList.remove("hidden");
     readonlyNote.textContent = data ? `Recorded at ${fmtTime(data.recorded_at)}. Spotted a mistake? Ask Control Room to correct it.` : "Couldn't find today's reading.";
 
-    if (data && data.consumption != null) {
+    if (!isGauge && data && data.consumption != null) {
       consumptionBox.classList.remove("hidden");
       consumptionBox.style.background = data.consumption < 0 ? "var(--red-bg)" : "var(--green-bg)";
       document.getElementById("rm-consumption-value").textContent = `${Number(data.consumption).toFixed(2)} ${m.unit}`;
     } else {
       consumptionBox.classList.add("hidden");
     }
+  } else if (isGauge) {
+    // Gauge: no math, just show the last logged value as reference and
+    // start the input blank — a level/pressure isn't "the previous
+    // value plus a delta", it's a fresh reading each time.
+    const { data: recent } = await sb.from("meter_readings")
+      .select("reading_value, recorded_at")
+      .eq("meter_id", m.id)
+      .order("recorded_at", { ascending: false })
+      .limit(1);
+    const last = recent && recent[0];
+    state.tileModalPrevious = null;
+    document.getElementById("rm-previous").textContent = last ? `${last.reading_value} (last logged ${fmtTime(last.recorded_at)})` : "No prior reading";
+    prevConsumptionEl.classList.add("hidden");
+    consumptionBox.classList.add("hidden");
+
+    input.value = "";
+    input.readOnly = false;
+    viewBadge.classList.add("hidden");
+    reviewBtn.classList.remove("hidden");
+    cancelBtn.textContent = "Cancel";
+    readonlyNote.classList.add("hidden");
   } else {
     // Query meter_readings directly (not just the latest_meter_readings
     // view) so we also get consumption context. Pull the last TWO
@@ -846,7 +957,11 @@ document.getElementById("rm-reading-input").addEventListener("input", (e) => {
 });
 
 function updateTileModalConsumption() {
-  if (state.tileModalReadOnly) return;
+  if (state.tileModalReadOnly || state.tileModalIsGauge) {
+    document.getElementById("rm-consumption-box").classList.add("hidden");
+    updateReviewButton();
+    return;
+  }
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const box = document.getElementById("rm-consumption-box");
   if (isNaN(val)) { box.classList.add("hidden"); updateReviewButton(); return; }
@@ -880,56 +995,64 @@ document.getElementById("rm-review-btn").onclick = () => {
   const m = state.tileModalMeter;
   if (isNaN(val) || !m) return;
 
-  const prev = state.tileModalPrevious;
-  const consumption = prev !== null ? val - prev : null;
-  const isLow = prev !== null && val < prev;
-
-  // Populate confirmation screen
   document.getElementById("rm-c-reading").textContent = `${val} ${m.unit}`;
 
   const consRow = document.getElementById("rm-c-consumption-row");
   const costRow = document.getElementById("rm-c-cost-row");
   const warning = document.getElementById("rm-c-warning");
-  const consChangeEl = document.getElementById("rm-c-consumption-change");
-  const costChangeEl = document.getElementById("rm-c-cost-change");
 
-  // % change vs the last recorded consumption for this meter (same
-  // rate applies to both, so cost moves by the same %).
-  const lastConsumption = state.tileModalLastConsumption;
-  let changeText = "";
-  let changeColor = "var(--text-muted)";
-  if (consumption !== null && lastConsumption !== null && lastConsumption !== 0) {
-    const pct = ((consumption - lastConsumption) / Math.abs(lastConsumption)) * 100;
-    changeText = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
-    changeColor = pct >= 0 ? "var(--green)" : "var(--red)";
-  }
-  consChangeEl.textContent = changeText;
-  consChangeEl.style.color = changeColor;
-  costChangeEl.textContent = changeText;
-  costChangeEl.style.color = changeColor;
-
-  if (consumption !== null) {
-    consRow.classList.remove("hidden");
-    document.getElementById("rm-c-consumption").textContent = `${consumption.toFixed(2)} ${m.unit}`;
-
-    // Cost: this meter's own rate overrides the shared rate for its type;
-    // hidden entirely if neither is set, or if consumption went negative.
-    const rate = typeof m.cost_per_unit === "number" ? m.cost_per_unit : state.costRates[m.meter_type];
-    if (consumption >= 0 && typeof rate === "number") {
-      costRow.classList.remove("hidden");
-      document.getElementById("rm-c-cost-label").textContent = `Est. Cost (₹${rate}/${m.unit})`;
-      const cost = consumption * rate;
-      document.getElementById("rm-c-cost").textContent = `₹${cost.toFixed(2)}`;
-    } else {
-      costRow.classList.add("hidden");
-    }
-  } else {
+  if (state.tileModalIsGauge) {
+    // No math for a gauge reading — just the value goes on record.
     consRow.classList.add("hidden");
     costRow.classList.add("hidden");
-  }
+    warning.classList.add("hidden");
+    document.getElementById("rm-save-btn").className = "big primary";
+  } else {
+    const prev = state.tileModalPrevious;
+    const consumption = prev !== null ? val - prev : null;
+    const isLow = prev !== null && val < prev;
 
-  warning.classList.toggle("hidden", !isLow);
-  document.getElementById("rm-save-btn").className = "big " + (isLow ? "warn" : "primary");
+    const consChangeEl = document.getElementById("rm-c-consumption-change");
+    const costChangeEl = document.getElementById("rm-c-cost-change");
+
+    // % change vs the last recorded consumption for this meter (same
+    // rate applies to both, so cost moves by the same %).
+    const lastConsumption = state.tileModalLastConsumption;
+    let changeText = "";
+    let changeColor = "var(--text-muted)";
+    if (consumption !== null && lastConsumption !== null && lastConsumption !== 0) {
+      const pct = ((consumption - lastConsumption) / Math.abs(lastConsumption)) * 100;
+      changeText = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
+      changeColor = pct >= 0 ? "var(--green)" : "var(--red)";
+    }
+    consChangeEl.textContent = changeText;
+    consChangeEl.style.color = changeColor;
+    costChangeEl.textContent = changeText;
+    costChangeEl.style.color = changeColor;
+
+    if (consumption !== null) {
+      consRow.classList.remove("hidden");
+      document.getElementById("rm-c-consumption").textContent = `${consumption.toFixed(2)} ${m.unit}`;
+
+      // Cost: this meter's own rate overrides the shared rate for its type;
+      // hidden entirely if neither is set, or if consumption went negative.
+      const rate = typeof m.cost_per_unit === "number" ? m.cost_per_unit : state.costRates[m.meter_type];
+      if (consumption >= 0 && typeof rate === "number") {
+        costRow.classList.remove("hidden");
+        document.getElementById("rm-c-cost-label").textContent = `Est. Cost (₹${rate}/${m.unit})`;
+        const cost = consumption * rate;
+        document.getElementById("rm-c-cost").textContent = `₹${cost.toFixed(2)}`;
+      } else {
+        costRow.classList.add("hidden");
+      }
+    } else {
+      consRow.classList.add("hidden");
+      costRow.classList.add("hidden");
+    }
+
+    warning.classList.toggle("hidden", !isLow);
+    document.getElementById("rm-save-btn").className = "big " + (isLow ? "warn" : "primary");
+  }
 
   // Switch views
   document.getElementById("rm-entry-view").classList.add("hidden");
@@ -948,7 +1071,7 @@ document.getElementById("rm-save-btn").onclick = async () => {
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const m = state.tileModalMeter;
   const prev = state.tileModalPrevious;
-  const isLow = prev !== null && val < prev;
+  const isLow = !state.tileModalIsGauge && prev !== null && val < prev;
 
   const btn = document.getElementById("rm-save-btn");
   btn.disabled = true; btn.textContent = "Saving...";
@@ -1028,7 +1151,7 @@ let lastRows = [];
 async function refreshDashboard() {
   const f = currentFilters();
   let query = sb.from("meter_readings")
-    .select("id, reading_value, consumption, shift, reading_date, recorded_at, notes, meters(meter_code,name,location,unit,meter_group), operators(name)")
+    .select("id, reading_value, consumption, shift, reading_date, recorded_at, notes, meters(meter_code,name,location,unit,meter_group,value_type), operators(name)")
     .eq("reading_date", f.date)
     .order("recorded_at", { ascending: false });
   if (f.shift) query = query.eq("shift", f.shift);
@@ -1055,6 +1178,7 @@ function renderLiveTable(rows) {
   body.innerHTML = "";
   empty.classList.toggle("hidden", rows.length > 0);
   rows.forEach(r => {
+    const isGauge = r.meters?.value_type === "gauge";
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${fmtTime(r.recorded_at)}</td>
@@ -1062,7 +1186,7 @@ function renderLiveTable(rows) {
       <td>${r.meters?.location || ""}</td>
       <td>${r.shift}</td>
       <td>${r.reading_value} ${r.meters?.unit || ""}</td>
-      <td style="${r.consumption < 0 ? "color:var(--red);" : ""}">${r.consumption}</td>
+      <td style="${!isGauge && r.consumption < 0 ? "color:var(--red);" : ""}">${isGauge ? "—" : r.consumption}</td>
       <td>${r.operators?.name || ""}</td>
     `;
     body.appendChild(tr);
@@ -1150,6 +1274,7 @@ addMeterForm.addEventListener("submit", async (e) => {
   const type = document.getElementById("am-type").value;
   const unit = document.getElementById("am-unit").value.trim();
   const readingMode = document.getElementById("am-reading-mode").value;
+  const valueType = document.getElementById("am-value-type").value;
   const costRaw = document.getElementById("am-cost").value.trim();
   const costPerUnit = costRaw === "" ? null : parseFloat(costRaw);
 
@@ -1160,7 +1285,7 @@ addMeterForm.addEventListener("submit", async (e) => {
 
   const { error } = await sb.from("meters").insert({
     meter_code: code, name, location, meter_group: group, meter_type: type, unit, active: true,
-    reading_mode: readingMode, cost_per_unit: costPerUnit,
+    reading_mode: readingMode, cost_per_unit: costPerUnit, value_type: valueType,
   });
 
   btn.disabled = false; btn.textContent = "Add Meter";
@@ -1185,7 +1310,7 @@ function exportCsv() {
     const row = [
       new Date(r.recorded_at).toLocaleString(),
       r.meters?.meter_code, r.meters?.name, r.meters?.location, r.shift,
-      r.reading_value, r.meters?.unit, r.consumption, r.operators?.name, r.notes || "",
+      r.reading_value, r.meters?.unit, r.meters?.value_type === "gauge" ? "" : r.consumption, r.operators?.name, r.notes || "",
     ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`);
     lines.push(row.join(","));
   });
