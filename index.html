@@ -728,7 +728,7 @@ async function openShareModal() {
   if (lines.length === 0) { toast("No hourly readings logged yet today", "err"); return; }
 
   const now = new Date();
-  const header = `${currentDepartment() || "Readings"} — Hourly Update — ${now.toLocaleDateString()} ${fmtTime(now)}`;
+  const header = `${now.toLocaleDateString()} ${fmtTime(now)}`;
   shareMessageText = `${header}\n${lines.join("\n")}`;
 
   document.getElementById("share-modal-title").textContent = header;
