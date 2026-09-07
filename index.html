@@ -141,6 +141,7 @@
         <div class="progress-track"><div class="progress-fill" id="tile-progress-fill" style="width:0%;"></div></div>
         <p class="readout-empty" style="margin-top:6px;" id="tile-progress-text">0 / 0 read</p>
       </div>
+      <button id="share-hourly-btn" class="hidden" style="margin-top:10px; width:100%;">📤 Share Hourly Readings</button>
     </div>
     <div id="tile-grid" class="round-grid"></div>
     <p id="tile-empty" class="readout-empty hidden" style="text-align:center; padding:20px 0;">No meters set up for this yet — ask an Admin to add one.</p>
@@ -312,6 +313,7 @@
       <div id="rm-consumption-box" class="hidden" style="border-radius:var(--radius); padding:12px; text-align:center; margin-bottom:12px;">
         <div class="eyebrow">Est. Consumption</div>
         <p id="rm-consumption-value" class="hero-number" style="font-size:20px; margin:4px 0 0;"></p>
+        <p id="rm-consumption-live-change" style="font-family:'JetBrains Mono',monospace; font-size:12px; margin:4px 0 0;"></p>
       </div>
       <p id="rm-readonly-note" class="hidden"></p>
       <div style="display:flex; gap:8px;">
@@ -342,13 +344,28 @@
           </span>
         </div>
       </div>
-      <p id="rm-c-warning" class="hidden" style="font-size:12px; color:var(--amber); margin-bottom:12px; text-align:center;">
-        ⚠️ Reading is lower than previous. Save only if meter was reset.
-      </p>
+      <p id="rm-c-warning" class="hidden" style="font-size:12px; color:var(--amber); margin-bottom:12px; text-align:center;"></p>
+      <label id="rm-reset-confirm-wrap" class="hidden" style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text); margin-bottom:12px; cursor:pointer;">
+        <input type="checkbox" id="rm-reset-confirm-checkbox" style="width:16px; height:16px; flex-shrink:0;" />
+        I confirm the meter was physically reset or replaced
+      </label>
       <div style="display:flex; gap:8px;">
         <button id="rm-save-btn" class="primary big" style="flex:1;">Confirm & Save</button>
         <button id="rm-edit-btn" style="flex:1; padding:16px; font-size:15px;">Edit</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- SHARE HOURLY SUMMARY MODAL ---------- -->
+<div id="share-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="eyebrow">Hourly Readings</div>
+    <p style="font-family:'Oswald',sans-serif; font-size:16px; margin:2px 0 10px;" id="share-modal-title"></p>
+    <div id="share-summary-box" style="background:var(--panel-raised); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:14px; font-family:'JetBrains Mono',monospace; font-size:13px; white-space:pre-wrap; line-height:1.6;"></div>
+    <div style="display:flex; gap:8px;">
+      <button id="share-whatsapp-link-btn" class="primary big" style="flex:1;">Send via WhatsApp</button>
+      <button id="share-modal-close-btn" style="flex:1;">Close</button>
     </div>
   </div>
 </div>
@@ -362,6 +379,10 @@
 const SUPABASE_URL = "https://cyycyzwfeswnodpnhpdu.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5eWN5endmZXN3bm9kcG5ocGR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxMjI2MTQsImV4cCI6MjEwMjY5ODYxNH0.WXMde2-K_roIqqhZvcTyi-O_dB1q0HvPzRRMpj6MzN4";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Flag a cumulative-meter consumption as abnormal when it runs this many
+// percent above the last recorded consumption for that meter.
+const ABNORMAL_CONSUMPTION_PCT = 30;
 
 // ============================================================
 // STATE
@@ -669,7 +690,58 @@ async function refreshTileGrid() {
     document.getElementById("tile-progress-text").textContent = `${doneCount} / ${trackedMeters.length} read`;
     document.getElementById("tile-progress-fill").style.width = `${Math.round((doneCount / trackedMeters.length) * 100)}%`;
   }
+
+  const hasHourly = tileMeters.some(m => m.reading_mode === "hourly");
+  document.getElementById("share-hourly-btn").classList.toggle("hidden", !hasHourly);
 }
+
+// ------------------------------------------------------------
+// Share Hourly Readings — pulls each hourly meter's latest value
+// logged today (in the operator's current department view) into
+// a plain-text summary, and opens WhatsApp's click-to-chat link
+// with that text prefilled so the operator picks who to send it to.
+// ------------------------------------------------------------
+let shareMessageText = "";
+
+async function openShareModal() {
+  const hourlyMeters = departmentMeters().filter(m => m.reading_mode === "hourly");
+  if (hourlyMeters.length === 0) return;
+
+  const { data, error } = await sb.from("meter_readings")
+    .select("meter_id, reading_value, recorded_at")
+    .eq("reading_date", todayStr())
+    .in("meter_id", hourlyMeters.map(m => m.id))
+    .order("recorded_at", { ascending: false });
+
+  if (error) { toast("Could not load today's readings", "err"); return; }
+
+  const latestByMeter = {};
+  data.forEach(r => { if (!(r.meter_id in latestByMeter)) latestByMeter[r.meter_id] = r; }); // rows are newest-first
+
+  const lines = [];
+  hourlyMeters.forEach(m => {
+    const r = latestByMeter[m.id];
+    if (!r) return; // nothing logged for this meter yet today — leave it out
+    lines.push(`${m.name}: ${r.reading_value}${m.unit ? " " + m.unit : ""}`);
+  });
+
+  if (lines.length === 0) { toast("No hourly readings logged yet today", "err"); return; }
+
+  const now = new Date();
+  const header = `${currentDepartment() || "Readings"} — Hourly Update — ${now.toLocaleDateString()} ${fmtTime(now)}`;
+  shareMessageText = `${header}\n${lines.join("\n")}`;
+
+  document.getElementById("share-modal-title").textContent = header;
+  document.getElementById("share-summary-box").textContent = lines.join("\n");
+  document.getElementById("share-modal").classList.add("open");
+}
+
+document.getElementById("share-hourly-btn").onclick = openShareModal;
+document.getElementById("share-modal-close-btn").onclick = () => document.getElementById("share-modal").classList.remove("open");
+document.getElementById("share-whatsapp-link-btn").onclick = () => {
+  const url = `https://wa.me/?text=${encodeURIComponent(shareMessageText)}`;
+  window.open(url, "_blank");
+};
 
 // ------------------------------------------------------------
 // Trend chart — daily CONSUMPTION (not raw reading value) for
@@ -828,6 +900,8 @@ async function openTileModal(m, readOnly = false) {
   const prevConsumptionEl = document.getElementById("rm-prev-consumption");
   prevConsumptionEl.classList.add("hidden");
   state.tileModalLastConsumption = null;
+  document.getElementById("rm-reset-confirm-wrap").classList.add("hidden");
+  document.getElementById("rm-reset-confirm-checkbox").checked = false;
 
   // Trend chart: consumption trend for cumulative meters, raw value
   // trend for gauge meters. Loads for both modes; renders once fetched.
@@ -964,6 +1038,7 @@ function updateTileModalConsumption() {
   }
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const box = document.getElementById("rm-consumption-box");
+  const changeEl = document.getElementById("rm-consumption-live-change");
   if (isNaN(val)) { box.classList.add("hidden"); updateReviewButton(); return; }
 
   const prev = state.tileModalPrevious;
@@ -972,6 +1047,15 @@ function updateTileModalConsumption() {
     box.classList.remove("hidden");
     document.getElementById("rm-consumption-value").textContent = `${consumption.toFixed(2)} ${state.tileModalMeter.unit}`;
     box.style.background = consumption < 0 ? "var(--red-bg)" : "var(--green-bg)";
+
+    const lastConsumption = state.tileModalLastConsumption;
+    if (lastConsumption !== null && lastConsumption !== 0) {
+      const pct = ((consumption - lastConsumption) / Math.abs(lastConsumption)) * 100;
+      changeEl.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}% vs last`;
+      changeEl.style.color = pct >= 0 ? "var(--green)" : "var(--red)";
+    } else {
+      changeEl.textContent = "";
+    }
   }
   updateReviewButton();
 }
@@ -1016,12 +1100,14 @@ document.getElementById("rm-review-btn").onclick = () => {
     const costChangeEl = document.getElementById("rm-c-cost-change");
 
     // % change vs the last recorded consumption for this meter (same
-    // rate applies to both, so cost moves by the same %).
+    // rate applies to both, so cost moves by the same %). Also drives
+    // the abnormal-spike warning below.
     const lastConsumption = state.tileModalLastConsumption;
+    let pct = null;
     let changeText = "";
     let changeColor = "var(--text-muted)";
     if (consumption !== null && lastConsumption !== null && lastConsumption !== 0) {
-      const pct = ((consumption - lastConsumption) / Math.abs(lastConsumption)) * 100;
+      pct = ((consumption - lastConsumption) / Math.abs(lastConsumption)) * 100;
       changeText = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
       changeColor = pct >= 0 ? "var(--green)" : "var(--red)";
     }
@@ -1050,8 +1136,35 @@ document.getElementById("rm-review-btn").onclick = () => {
       costRow.classList.add("hidden");
     }
 
-    warning.classList.toggle("hidden", !isLow);
-    document.getElementById("rm-save-btn").className = "big " + (isLow ? "warn" : "primary");
+    // Abnormal-spike check: consumption running 30%+ away from the last
+    // recorded consumption for this meter, in either direction. Separate
+    // from the low-reading (possible reset) warning above — both need
+    // explicit confirmation, but with different messaging and, for the
+    // reset case, an extra checkbox (see below).
+    const isAbnormalSpike = pct !== null && Math.abs(pct) > ABNORMAL_CONSUMPTION_PCT;
+
+    if (isLow) {
+      warning.textContent = "⚠️ Reading is lower than previous. Save only if the meter was physically reset or replaced.";
+    } else if (isAbnormalSpike) {
+      warning.textContent = `⚠️ Consumption is ${changeText} ${pct >= 0 ? "above" : "below"} the recent trend. Double-check before saving.`;
+    }
+    warning.classList.toggle("hidden", !(isLow || isAbnormalSpike));
+    document.getElementById("rm-save-btn").className = "big " + ((isLow || isAbnormalSpike) ? "warn" : "primary");
+
+    // Reset needs an explicit extra confirmation — a mis-typed or bad
+    // reading shouldn't be able to silently reset the meter's trail.
+    // Spikes alone (not low) don't get this extra gate.
+    const resetWrap = document.getElementById("rm-reset-confirm-wrap");
+    const resetCheckbox = document.getElementById("rm-reset-confirm-checkbox");
+    const saveBtn = document.getElementById("rm-save-btn");
+    if (isLow) {
+      resetWrap.classList.remove("hidden");
+      resetCheckbox.checked = false;
+      saveBtn.disabled = true;
+    } else {
+      resetWrap.classList.add("hidden");
+      saveBtn.disabled = false;
+    }
   }
 
   // Switch views
@@ -1066,12 +1179,21 @@ document.getElementById("rm-edit-btn").onclick = () => {
   document.getElementById("rm-reading-input").focus();
 };
 
+document.getElementById("rm-reset-confirm-checkbox").addEventListener("change", (e) => {
+  document.getElementById("rm-save-btn").disabled = !e.target.checked;
+});
+
 // Final Save
 document.getElementById("rm-save-btn").onclick = async () => {
   const val = parseFloat(document.getElementById("rm-reading-input").value);
   const m = state.tileModalMeter;
   const prev = state.tileModalPrevious;
   const isLow = !state.tileModalIsGauge && prev !== null && val < prev;
+
+  if (isLow && !document.getElementById("rm-reset-confirm-checkbox").checked) {
+    toast("Please confirm the meter reset before saving", "err");
+    return;
+  }
 
   const btn = document.getElementById("rm-save-btn");
   btn.disabled = true; btn.textContent = "Saving...";
