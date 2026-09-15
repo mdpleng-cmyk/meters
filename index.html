@@ -178,6 +178,40 @@
       </div>
     </div>
 
+    <div id="backfill-panel" class="panel hidden">
+      <span class="section-label">Backdated Reading</span>
+      <p class="readout-empty" style="margin:0 0 12px;">For missed readings only. Use the actual reading date and add a reason.</p>
+      <form id="backfill-form">
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Meter</label>
+            <select id="bf-meter" required></select>
+          </div>
+          <div class="field">
+            <label class="field-label">Reading Date</label>
+            <input id="bf-date" type="date" required />
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Reading</label>
+            <input id="bf-value" type="number" step="any" required />
+          </div>
+          <div class="field">
+            <label class="field-label">Shift</label>
+            <select id="bf-shift">
+              <option>Round</option><option>Morning</option><option>Evening</option><option>Night</option><option>Hourly</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label">Reason</label>
+          <input id="bf-note" type="text" placeholder="e.g. Missed reading on scheduled round" required />
+        </div>
+        <button type="submit" id="bf-submit-btn" class="primary">Save Backdated Reading</button>
+      </form>
+    </div>
+
     <!-- ---------- ADD METER (Admin only) ---------- -->
     <div id="add-meter-panel" class="panel hidden">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
@@ -311,13 +345,14 @@
       <input id="rm-reading-input" type="text" inputmode="decimal" placeholder="0.00"
         style="padding:16px; font-size:28px; text-align:center; margin-bottom:12px; display:block;" />
       <div id="rm-consumption-box" class="hidden" style="border-radius:var(--radius); padding:12px; text-align:center; margin-bottom:12px;">
-        <div class="eyebrow">Est. Consumption</div>
+        <div class="eyebrow" id="rm-consumption-label">Est. Consumption</div>
         <p id="rm-consumption-value" class="hero-number" style="font-size:20px; margin:4px 0 0;"></p>
         <p id="rm-consumption-live-change" style="font-family:'JetBrains Mono',monospace; font-size:12px; margin:4px 0 0;"></p>
       </div>
       <p id="rm-readonly-note" class="hidden"></p>
       <div style="display:flex; gap:8px;">
         <button id="rm-review-btn" class="primary big" style="flex:1;">Review</button>
+        <button id="rm-self-edit-btn" class="primary big hidden" style="flex:1;">Edit Reading</button>
         <button id="rm-cancel-btn" style="flex:1;">Cancel</button>
       </div>
     </div>
@@ -330,7 +365,7 @@
           <span id="rm-c-reading" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--text);"></span>
         </div>
         <div id="rm-c-consumption-row" style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px;">
-          <span class="readout-empty">Consumption</span>
+          <span class="readout-empty" id="rm-c-consumption-label">Consumption</span>
           <span>
             <span id="rm-c-consumption" style="font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--amber);"></span>
             <span id="rm-c-consumption-change" style="font-family:'JetBrains Mono',monospace; font-size:11px; margin-left:6px;"></span>
@@ -395,7 +430,9 @@ const state = {
   liveChannel: null,
   costRates: {},          // meter_type -> shared rate
   tileModalMeter: null,
+  tileModalRowId: null,
   tileModalPrevious: null,
+  tileModalPreviousDate: null,
   tileModalShiftTag: null,
   tileModalReadOnly: false,
   tileModalIsGauge: false,
@@ -426,6 +463,10 @@ function yesterdayStr() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
   return d.toISOString().slice(0, 10);
+}
+function daysBetweenDates(later, earlier) {
+  if (!later || !earlier) return 0;
+  return Math.round((Date.parse(`${later}T00:00:00Z`) - Date.parse(`${earlier}T00:00:00Z`)) / 86400000);
 }
 
 // ============================================================
@@ -877,6 +918,7 @@ async function openTileModal(m, readOnly = false) {
   state.tileModalMeter = m;
   state.tileModalShiftTag = expectedShiftTag(m);
   state.tileModalReadOnly = readOnly;
+  state.tileModalRowId = null;
   const isGauge = m.value_type === "gauge";
   state.tileModalIsGauge = isGauge;
   const isHourly = m.reading_mode === "hourly";
@@ -893,6 +935,7 @@ async function openTileModal(m, readOnly = false) {
 
   const input = document.getElementById("rm-reading-input");
   const reviewBtn = document.getElementById("rm-review-btn");
+  const selfEditBtn = document.getElementById("rm-self-edit-btn");
   const cancelBtn = document.getElementById("rm-cancel-btn");
   const readonlyNote = document.getElementById("rm-readonly-note");
   const viewBadge = document.getElementById("rm-view-badge");
@@ -900,6 +943,9 @@ async function openTileModal(m, readOnly = false) {
   const prevConsumptionEl = document.getElementById("rm-prev-consumption");
   prevConsumptionEl.classList.add("hidden");
   state.tileModalLastConsumption = null;
+  state.tileModalPreviousDate = null;
+  document.getElementById("rm-consumption-label").textContent = "Est. Consumption";
+  document.getElementById("rm-c-consumption-label").textContent = "Consumption";
   document.getElementById("rm-reset-confirm-wrap").classList.add("hidden");
   document.getElementById("rm-reset-confirm-checkbox").checked = false;
 
@@ -919,11 +965,13 @@ async function openTileModal(m, readOnly = false) {
     // Gauge meters and Hourly meters never open read-only (Hourly never
     // locks; a "done" Round/Shift gauge tile still just shows the value).
     const { data } = await sb.from("meter_readings")
-      .select("reading_value, previous_reading, consumption, recorded_at")
+      .select("id, reading_value, previous_reading, consumption, recorded_at, recorded_by")
       .eq("meter_id", m.id).eq("reading_date", todayStr()).eq("shift", state.tileModalShiftTag)
       .maybeSingle();
 
+    state.tileModalRowId = data?.id || null;
     state.tileModalPrevious = data && data.previous_reading != null ? Number(data.previous_reading) : null;
+    state.tileModalPreviousDate = data ? data.reading_date : null;
     document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
 
     input.value = data ? data.reading_value : "";
@@ -933,6 +981,8 @@ async function openTileModal(m, readOnly = false) {
     cancelBtn.textContent = "Close";
     readonlyNote.classList.remove("hidden");
     readonlyNote.textContent = data ? `Recorded at ${fmtTime(data.recorded_at)}. Spotted a mistake? Ask Control Room to correct it.` : "Couldn't find today's reading.";
+    const canSelfEdit = data && data.recorded_by === state.operator?.id && (Date.now() - Date.parse(data.recorded_at)) <= 8 * 60 * 60 * 1000;
+    selfEditBtn.classList.toggle("hidden", !canSelfEdit);
 
     if (!isGauge && data && data.consumption != null) {
       consumptionBox.classList.remove("hidden");
@@ -960,6 +1010,7 @@ async function openTileModal(m, readOnly = false) {
     input.readOnly = false;
     viewBadge.classList.add("hidden");
     reviewBtn.classList.remove("hidden");
+    selfEditBtn.classList.add("hidden");
     cancelBtn.textContent = "Cancel";
     readonlyNote.classList.add("hidden");
   } else {
@@ -978,22 +1029,32 @@ async function openTileModal(m, readOnly = false) {
     if (recentErr) console.error("meter_readings lookup failed:", recentErr);
     const data = recent && recent[0] ? recent[0] : null;
     const prior = recent && recent[1] ? recent[1] : null;
+    const gapDays = data ? daysBetweenDates(todayStr(), data.reading_date) : 0;
 
     state.tileModalPrevious = data ? Number(data.reading_value) : null;
+    state.tileModalPreviousDate = data ? data.reading_date : null;
     document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
 
     let lastConsumption = data && data.consumption != null ? Number(data.consumption) : null;
     if (lastConsumption === null && data && prior) {
       lastConsumption = Number(data.reading_value) - Number(prior.reading_value);
     }
-    state.tileModalLastConsumption = lastConsumption;
+    // A skipped day makes the delta a multi-day total, so do not compare it
+    // with the previous single interval as though both were one day.
+    state.tileModalLastConsumption = gapDays > 1 ? null : lastConsumption;
 
     if (data && lastConsumption !== null) {
       const dayLabel = data.reading_date === yesterdayStr()
         ? "Yesterday"
         : new Date(data.reading_date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      prevConsumptionEl.textContent = `${dayLabel}'s consumption: ${lastConsumption.toFixed(2)} ${m.unit}`;
+      prevConsumptionEl.textContent = gapDays > 1
+        ? `Last reading was ${gapDays} days ago. The estimate below covers the full interval.`
+        : `${dayLabel}'s consumption: ${lastConsumption.toFixed(2)} ${m.unit}`;
       prevConsumptionEl.style.color = lastConsumption < 0 ? "var(--red)" : "var(--text-muted)";
+      if (gapDays > 1) {
+        document.getElementById("rm-consumption-label").textContent = "Est. Consumption Since Last Reading";
+        document.getElementById("rm-c-consumption-label").textContent = "Consumption Since Last Reading";
+      }
     } else {
       prevConsumptionEl.textContent = "No prior consumption data yet";
       prevConsumptionEl.style.color = "var(--text-muted)";
@@ -1006,6 +1067,7 @@ async function openTileModal(m, readOnly = false) {
     input.readOnly = false;
     viewBadge.classList.add("hidden");
     reviewBtn.classList.remove("hidden");
+    selfEditBtn.classList.add("hidden");
     cancelBtn.textContent = "Cancel";
     readonlyNote.classList.add("hidden");
     updateTileModalConsumption();
@@ -1070,6 +1132,16 @@ document.getElementById("rm-cancel-btn").onclick = () => {
   document.getElementById("round-modal").classList.remove("open");
   state.tileModalMeter = null;
   state.tileModalReadOnly = false;
+};
+
+document.getElementById("rm-self-edit-btn").onclick = () => {
+  state.tileModalReadOnly = false;
+  document.getElementById("rm-reading-input").readOnly = false;
+  document.getElementById("rm-readonly-note").classList.add("hidden");
+  document.getElementById("rm-self-edit-btn").classList.add("hidden");
+  document.getElementById("rm-review-btn").classList.remove("hidden");
+  document.getElementById("rm-cancel-btn").textContent = "Cancel";
+  document.getElementById("rm-reading-input").focus();
 };
 
 // Transition to Confirmation Screen
@@ -1198,20 +1270,24 @@ document.getElementById("rm-save-btn").onclick = async () => {
   const btn = document.getElementById("rm-save-btn");
   btn.disabled = true; btn.textContent = "Saving...";
 
-  const { error } = await sb.from("meter_readings").insert({
+  const reading = {
     meter_id: m.id,
     reading_value: val,
     recorded_by: state.operator.id,
     shift: state.tileModalShiftTag,
     reading_date: todayStr(),
     notes: isLow ? "possible reset/replacement — confirmed by operator" : null,
-  });
+  };
+  const result = state.tileModalRowId
+    ? await sb.from("meter_readings").update(reading).eq("id", state.tileModalRowId)
+    : await sb.from("meter_readings").insert(reading);
+  const { error } = result;
 
   btn.disabled = false; btn.textContent = "Confirm & Save";
 
   if (error) { toast("Save failed: " + error.message, "err"); return; }
 
-  toast(`Saved ✓ ${m.meter_code}`);
+  toast(`${state.tileModalRowId ? "Updated" : "Saved"} ✓ ${m.meter_code}`);
   document.getElementById("round-modal").classList.remove("open");
   state.tileModalMeter = null;
   await refreshTileGrid();
@@ -1240,7 +1316,10 @@ function subscribeLiveChannel() {
 // ============================================================
 async function initDashboard() {
   document.getElementById("add-meter-panel").classList.toggle("hidden", !isAdmin());
+  document.getElementById("backfill-panel").classList.toggle("hidden", !isControlRoomOrAdmin());
   document.getElementById("filter-date").value = todayStr();
+  document.getElementById("bf-date").max = todayStr();
+  populateBackfillMeters();
   refreshGroupOptions();
 
   ["filter-date", "filter-shift", "filter-group", "filter-search"].forEach(id => {
@@ -1250,6 +1329,41 @@ async function initDashboard() {
 
   await refreshDashboard();
 }
+
+function populateBackfillMeters() {
+  const select = document.getElementById("bf-meter");
+  const current = select.value;
+  select.innerHTML = state.meters.map(m => `<option value="${m.id}">${m.meter_code} — ${m.name}</option>`).join("");
+  if (state.meters.some(m => String(m.id) === current)) select.value = current;
+}
+
+document.getElementById("backfill-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const meterId = document.getElementById("bf-meter").value;
+  const readingDate = document.getElementById("bf-date").value;
+  const value = parseFloat(document.getElementById("bf-value").value);
+  const shift = document.getElementById("bf-shift").value;
+  const note = document.getElementById("bf-note").value.trim();
+  if (!meterId || !readingDate || isNaN(value) || !note) { toast("Complete all backfill fields", "err"); return; }
+  if (readingDate > todayStr()) { toast("A reading cannot be dated in the future", "err"); return; }
+
+  const btn = document.getElementById("bf-submit-btn");
+  btn.disabled = true; btn.textContent = "Saving...";
+  const { error } = await sb.from("meter_readings").insert({
+    meter_id: meterId,
+    reading_value: value,
+    recorded_by: state.operator.id,
+    shift,
+    reading_date: readingDate,
+    notes: `Backdated: ${note}`,
+  });
+  btn.disabled = false; btn.textContent = "Save Backdated Reading";
+  if (error) { toast("Backfill failed: " + error.message, "err"); return; }
+  toast("Backdated reading saved");
+  document.getElementById("backfill-form").reset();
+  document.getElementById("bf-date").max = todayStr();
+  await refreshDashboard();
+});
 
 function refreshGroupOptions() {
   const groups = [...new Set(state.meters.map(m => m.meter_group).filter(Boolean))].sort();

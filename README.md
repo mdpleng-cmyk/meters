@@ -14,7 +14,7 @@ A reference for how the pieces fit together. Three files make up the whole syste
 | **`latest_meter_readings` view** | Returns just the most recent reading per meter — what the app queries to show "previous reading" on the entry screen. |
 | **`set_previous_reading()` trigger** | Fires before every insert; looks up the last reading for that meter and stamps it into `previous_reading` automatically. |
 | **`is_control_room_or_admin()` / `is_admin()` functions** | RLS helpers checking the logged-in user's `level`. |
-| **RLS policies** | `operators`: names are public (needed for the login picker); only **Admin** can add/edit. `meters`: any logged-in user can read; only **Admin** can add/edit. `meter_readings`: any logged-in user can read; operators can only insert rows attributed to themselves (`auth.uid() = recorded_by`); only **Control Room or Admin** can edit/delete (fixing bad readings after the fact). |
+| **RLS policies** | `operators`: names are public (needed for the login picker); only **Admin** can add/edit. `meters`: any logged-in user can read; only **Admin** can add/edit. `meter_readings`: any logged-in user can read; operators can only insert rows attributed to themselves (`auth.uid() = recorded_by`); users can update their own reading for 8 hours; **Control Room or Admin** can backfill and edit. Corrections are recorded in `meter_reading_audit`. |
 
 ### The operator hierarchy
 
@@ -54,6 +54,7 @@ Everything lives in one file: HTML structure, hand-rolled dark theme (matches [[
 3. **`migration_enum_dropdowns.sql`** — converts `level`, `reading_mode`, and `meter_type` to native Postgres enums, so Table Editor renders them as dropdowns. (Note: the real column is `meter_type`, not `type` — an earlier version of this doc had it wrong.)
 4. **`migration_fix_shift_constraint.sql`** — the original `shift` check constraint only allowed Morning/Evening/Night; extended to include `Round`.
 5. **`migration_meter_cost.sql`** — adds the nullable `cost_per_unit` column used by the reading modal's estimated-cost display.
+6. **`migration_reading_corrections.sql`** — adds Control Room backfills, the 8-hour owner edit window, audit records, and recalculation of the reading chain after historical changes.
 
 `migration_control_room.sql` (renamed `supervisor` → `control_room`) is now superseded by the level-hierarchy migration and only matters for archaeology.
 
@@ -85,6 +86,7 @@ Realtime broadcasts the change → tile grid AND Control Room dashboard update i
 
 - **Level gate lives in two places**: the JS helper functions (`isRoundLevel()` etc.) and the DB functions (`is_admin()`, `is_control_room_or_admin()`). Change one, check the other.
 - **`reading_mode` is permanent per meter** — a physical device needing more than one tracked value becomes multiple `meters` rows (same `meter_group`), not one meter with two modes.
+- **Missed readings** — Control Room/Admin can use the Backdated Reading form with the actual date and a reason. Operators can edit their own same-day reading for up to 8 hours after submission; the date, meter, shift, and operator cannot be changed.
 - **Consumption is still a generated column** — never write to it directly.
 - **The trigger only fires on INSERT**, not UPDATE — Control Room manually editing a `reading_value` later leaves that row's `previous_reading` as originally recorded.
 - **`cost_per_unit` is optional and per-meter** — the modal only shows an estimated cost row when it's set; don't reintroduce a single global rate, since different meter types (kWh vs hours vs kg) aren't comparable.
