@@ -333,6 +333,101 @@
       <p id="live-table-empty" class="hidden readout-empty" style="text-align:center; padding:16px 0;">No readings for this filter yet.</p>
     </div>
   </main>
+
+  <!-- ---------- REPORT VIEW ---------- -->
+  <main id="report-view" class="wrap wide hidden">
+
+    <!-- Filter bar -->
+    <div class="panel">
+      <div class="rp-filters">
+        <div>
+          <label>From</label>
+          <input id="rp-from" type="date" />
+        </div>
+        <div>
+          <label>To</label>
+          <input id="rp-to" type="date" />
+        </div>
+        <div>
+          <label>Quick Range</label>
+          <div class="preset-btns">
+            <button class="preset-btn" data-preset="today">Today</button>
+            <button class="preset-btn active" data-preset="7d">Last 7 Days</button>
+            <button class="preset-btn" data-preset="30d">Last 30 Days</button>
+            <button class="preset-btn" data-preset="month">This Month</button>
+          </div>
+        </div>
+        <div>
+          <label>Group</label>
+          <select id="rp-group"><option value="">All Groups</option></select>
+        </div>
+        <div>
+          <label>Shift</label>
+          <select id="rp-shift">
+            <option value="">All</option>
+            <option>Morning</option><option>Evening</option><option>Night</option>
+            <option>Round</option><option>Hourly</option>
+          </select>
+        </div>
+        <div style="min-width:170px;">
+          <label>Meter</label>
+          <select id="rp-meter"><option value="">All Meters</option></select>
+        </div>
+        <button id="rp-export-btn" class="primary" style="align-self:flex-end;">Export CSV</button>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="eyebrow">Total Readings</div>
+        <div class="kpi-value" id="kpi-readings">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="eyebrow">Total Consumption</div>
+        <div class="kpi-value" id="kpi-consumption">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="eyebrow">Est. Total Cost</div>
+        <div class="kpi-value" id="kpi-cost">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="eyebrow">Active Meters</div>
+        <div class="kpi-value" id="kpi-meters">—</div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="panel">
+      <span class="section-label" id="rp-chart-title" style="margin-bottom:14px; display:block;">Daily Consumption</span>
+      <div class="report-chart-wrap">
+        <canvas id="report-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Readings table -->
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span class="section-label" style="margin:0;">Readings <span class="count" id="rp-table-count"></span></span>
+      </div>
+      <div class="table-wrap" style="max-height:520px;">
+        <table style="min-width:820px;">
+          <thead>
+            <tr>
+              <th>Date</th><th>Time</th><th>Meter</th><th>Name</th><th>Group</th><th>Shift</th>
+              <th>Reading</th><th>Consumption</th><th>Est. Cost</th><th>Operator</th><th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="rp-table-body"></tbody>
+        </table>
+      </div>
+      <p id="rp-table-empty" class="readout-empty hidden" style="text-align:center; padding:16px 0;">No readings for this period.</p>
+      <div id="rp-load-more-wrap" class="hidden" style="text-align:center; margin-top:12px;">
+        <button id="rp-load-more-btn">Load More</button>
+      </div>
+    </div>
+
+  </main>
 </div>
 
 <!-- ---------- ROUND READING MODAL ---------- -->
@@ -617,6 +712,7 @@ async function showMainApp() {
   document.getElementById("entry-tab-btn").textContent = currentDepartment() || "Readings";
   document.getElementById("entry-tab-btn").classList.toggle("hidden", isControlRoomOrAdmin());
   if (isControlRoomOrAdmin()) document.getElementById("dashboard-tab-btn").classList.remove("hidden");
+  document.getElementById("report-tab-btn").classList.remove("hidden"); // visible for every role
   await loadMeters();
   await loadCostRates();
   setTab(isControlRoomOrAdmin() ? "dashboard" : "entry");
@@ -628,8 +724,10 @@ function setTab(tab) {
   const showTile = tab === "entry" && isFieldLevel();
   document.getElementById("tile-view").classList.toggle("hidden", !showTile);
   document.getElementById("dashboard-view").classList.toggle("hidden", tab !== "dashboard");
+  document.getElementById("report-view").classList.toggle("hidden", tab !== "report");
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "dashboard") initDashboard();
+  if (tab === "report") initReport();
   if (showTile) refreshTileGrid();
 }
 
@@ -1380,11 +1478,17 @@ function subscribeLiveChannel() {
     .on("postgres_changes", { event: "*", schema: "public", table: "meter_readings" }, () => {
       if (!document.getElementById("tile-view").classList.contains("hidden")) refreshTileGrid();
       if (!document.getElementById("dashboard-view").classList.contains("hidden")) refreshDashboard();
+      if (!document.getElementById("report-view").classList.contains("hidden")) refreshReport();
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "meters" }, async () => {
       await loadMeters();
       if (!document.getElementById("tile-view").classList.contains("hidden")) refreshTileGrid();
       if (!document.getElementById("dashboard-view").classList.contains("hidden")) { refreshGroupOptions(); refreshDashboard(); }
+      if (!document.getElementById("report-view").classList.contains("hidden")) {
+        populateReportGroupSelect();
+        populateReportMeterSelect(document.getElementById("rp-group")?.value || "");
+        refreshReport();
+      }
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "cost_rates" }, loadCostRates)
     .subscribe();
@@ -1634,6 +1738,375 @@ function exportCsv() {
   const a = document.createElement("a");
   a.href = url;
   a.download = `meter-readings-${currentFilters().date}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// REPORTS
+// ============================================================
+let reportChartInstance = null;
+let reportAllRows = [];
+let reportDisplayedCount = 0;
+const REPORT_PAGE_SIZE = 100;
+let reportInitialized = false;
+
+function initReport() {
+  if (reportInitialized) {
+    // Already set up — just refresh so data is current
+    refreshReport();
+    return;
+  }
+  reportInitialized = true;
+
+  // Default range: last 7 days (today back to 6 days ago)
+  const today = new Date();
+  const from = new Date(today);
+  from.setDate(from.getDate() - 6);
+  document.getElementById("rp-to").value = today.toISOString().slice(0, 10);
+  document.getElementById("rp-from").value = from.toISOString().slice(0, 10);
+
+  populateReportMeterSelect();
+  populateReportGroupSelect();
+
+  // Filter listeners
+  document.getElementById("rp-group").addEventListener("change", (e) => {
+    populateReportMeterSelect(e.target.value);
+    refreshReport();
+  });
+
+  ["rp-from", "rp-to", "rp-shift", "rp-meter"].forEach(id => {
+    document.getElementById(id).addEventListener("change", refreshReport);
+  });
+
+  // Preset range buttons
+  document.querySelectorAll(".preset-btn").forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const t = new Date();
+      const f = new Date(t);
+      const p = btn.dataset.preset;
+      if (p === "7d")    f.setDate(f.getDate() - 6);
+      else if (p === "30d")  f.setDate(f.getDate() - 29);
+      else if (p === "month") f.setDate(1);
+      // "today": f === t already
+      document.getElementById("rp-to").value   = t.toISOString().slice(0, 10);
+      document.getElementById("rp-from").value = f.toISOString().slice(0, 10);
+      refreshReport();
+    };
+  });
+
+  document.getElementById("rp-export-btn").onclick = exportReportCsv;
+  document.getElementById("rp-load-more-btn").onclick = () => renderReportTable(reportAllRows, false);
+
+  refreshReport();
+}
+
+function populateReportMeterSelect(groupFilter = "") {
+  const sel = document.getElementById("rp-meter");
+  const cur = sel.value;
+  const source = groupFilter
+    ? state.meters.filter(m => (m.meter_group || "").toLowerCase() === groupFilter.toLowerCase())
+    : state.meters;
+  sel.innerHTML = `<option value="">All ${groupFilter ? groupFilter + " " : ""}Meters</option>` +
+    source.map(m => `<option value="${m.id}">${m.meter_code} — ${m.name}</option>`).join("");
+  if (source.some(m => String(m.id) === cur)) {
+    sel.value = cur;
+  } else {
+    sel.value = "";
+  }
+}
+
+function populateReportGroupSelect() {
+  const groups = [...new Set(state.meters.map(m => m.meter_group).filter(Boolean))].sort();
+  const sel = document.getElementById("rp-group");
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All Groups</option>' + groups.map(g => `<option value="${g}">${g}</option>`).join("");
+  if (groups.includes(cur)) sel.value = cur;
+}
+
+async function refreshReport() {
+  const from    = document.getElementById("rp-from").value;
+  const to      = document.getElementById("rp-to").value;
+  const group   = document.getElementById("rp-group").value;
+  const shift   = document.getElementById("rp-shift").value;
+  const meterId = document.getElementById("rp-meter").value;
+  if (!from || !to) return;
+
+  // Resolve which meter IDs to filter server-side
+  let meterIdsFilter = null;
+  if (meterId) {
+    meterIdsFilter = [meterId];
+  } else if (group) {
+    const inGroup = state.meters
+      .filter(m => (m.meter_group || "").toLowerCase() === group.toLowerCase())
+      .map(m => String(m.id));
+    if (inGroup.length === 0) {
+      reportAllRows = [];
+      reportDisplayedCount = 0;
+      renderReportKPIs([]);
+      renderReportChart([], from, to);
+      renderReportTable([], true);
+      return;
+    }
+    meterIdsFilter = inGroup;
+  }
+
+  let query = sb.from("meter_readings")
+    .select("id, reading_value, consumption, shift, reading_date, recorded_at, notes, meters(meter_code, name, location, unit, meter_group, value_type, meter_type, cost_per_unit), operators(name)")
+    .gte("reading_date", from)
+    .lte("reading_date", to)
+    .order("reading_date", { ascending: false })
+    .order("recorded_at", { ascending: false });
+
+  if (shift)          query = query.eq("shift", shift);
+  if (meterIdsFilter) query = query.in("meter_id", meterIdsFilter);
+
+  const { data, error } = await query;
+  if (error) { toast("Report load failed", "err"); return; }
+
+  let rows = data || [];
+  if (group && !meterId) {
+    rows = rows.filter(r => (r.meters?.meter_group || "").toLowerCase() === group.toLowerCase());
+  }
+
+  reportAllRows = rows;
+  reportDisplayedCount = 0;
+
+  renderReportKPIs(rows);
+  renderReportChart(rows, from, to);
+  renderReportTable(rows, true);
+}
+
+function renderReportKPIs(rows) {
+  // Only cumulative meters with a stored consumption value
+  const cumulRows = rows.filter(r => r.meters?.value_type !== "gauge" && r.consumption != null);
+  const totalConsumption = cumulRows.reduce((s, r) => s + Number(r.consumption), 0);
+
+  let totalCost = 0, hasCost = false;
+  cumulRows.forEach(r => {
+    const cons = Number(r.consumption);
+    if (cons <= 0) return;
+    const rate = r.meters?.cost_per_unit != null
+      ? Number(r.meters.cost_per_unit)
+      : state.costRates[r.meters?.meter_type];
+    if (typeof rate === "number" && !isNaN(rate)) { totalCost += cons * rate; hasCost = true; }
+  });
+
+  const activeMeters = new Set(rows.map(r => r.meters?.meter_code)).size;
+
+  document.getElementById("kpi-readings").textContent     = rows.length.toLocaleString();
+  document.getElementById("kpi-consumption").textContent  = cumulRows.length > 0 ? totalConsumption.toFixed(1) : "—";
+  document.getElementById("kpi-cost").textContent         = hasCost ? `₹${totalCost.toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—";
+  document.getElementById("kpi-meters").textContent       = activeMeters;
+}
+
+function renderReportChart(rows, from, to) {
+  // Destroy any existing Chart instance before recreating
+  if (reportChartInstance) { reportChartInstance.destroy(); reportChartInstance = null; }
+
+  // Build a full date-label array for the range so days with zero readings still show
+  const labels = [];
+  for (let d = new Date(from + "T00:00:00"); d <= new Date(to + "T00:00:00"); d.setDate(d.getDate() + 1)) {
+    labels.push(d.toISOString().slice(0, 10));
+  }
+
+  // Only cumulative meters with positive consumption contribute to the chart
+  const cumulRows = rows.filter(r => r.meters?.value_type !== "gauge" && r.consumption != null && Number(r.consumption) > 0);
+  const selectedGroup = document.getElementById("rp-group").value;
+  const selectedMeterId = document.getElementById("rp-meter").value;
+
+  // Update dynamic chart title
+  const chartTitleEl = document.getElementById("rp-chart-title");
+  if (chartTitleEl) {
+    if (selectedMeterId) {
+      const sm = state.meters.find(m => String(m.id) === String(selectedMeterId));
+      chartTitleEl.textContent = sm ? `Daily Consumption — ${sm.meter_code} (${sm.name})` : "Daily Consumption";
+    } else if (selectedGroup) {
+      chartTitleEl.textContent = `Daily Consumption — ${selectedGroup} (by Meter)`;
+    } else {
+      chartTitleEl.textContent = "Daily Consumption — All Groups";
+    }
+  }
+
+  // Dark theme defaults for Chart.js
+  Chart.defaults.color = "#8B9198";
+  Chart.defaults.borderColor = "#383E44";
+
+  const PALETTE = [
+    { bg: "rgba(255,176,32,0.75)",  border: "#FFB020" },  // amber
+    { bg: "rgba(62,207,142,0.75)",  border: "#3ECF8E" },  // green
+    { bg: "rgba(99,179,237,0.75)",  border: "#63B3ED" },  // blue
+    { bg: "rgba(167,139,250,0.75)", border: "#A78BFA" },  // purple
+    { bg: "rgba(244,114,182,0.75)", border: "#F472B6" },  // pink
+    { bg: "rgba(251,146,60,0.75)",  border: "#FB923C" },  // orange
+    { bg: "rgba(45,212,191,0.75)",  border: "#2DD4BF" },  // teal
+    { bg: "rgba(229,72,77,0.75)",   border: "#E5484D" },  // red
+  ];
+
+  let datasets;
+  if (selectedMeterId) {
+    // Specific meter selected
+    const selectedMeter = state.meters.find(m => String(m.id) === String(selectedMeterId));
+    const label = selectedMeter ? `${selectedMeter.meter_code} (${selectedMeter.unit})` : "Meter Consumption";
+    const dayMap = Object.fromEntries(labels.map(d => [d, 0]));
+    cumulRows.forEach(r => { if (dayMap[r.reading_date] !== undefined) dayMap[r.reading_date] += Number(r.consumption); });
+    datasets = [{
+      label,
+      data: labels.map(d => dayMap[d]),
+      backgroundColor: PALETTE[0].bg,
+      borderColor: PALETTE[0].border,
+      borderWidth: 1,
+      borderRadius: 3
+    }];
+  } else if (selectedGroup) {
+    // Specific group selected (e.g. Boiler, Plant, Refrigeration) -> break down by meter!
+    const meterCodes = [...new Set(cumulRows.map(r => r.meters?.meter_code || "Other"))].sort();
+    if (meterCodes.length <= 1) {
+      const dayMap = Object.fromEntries(labels.map(d => [d, 0]));
+      cumulRows.forEach(r => { if (dayMap[r.reading_date] !== undefined) dayMap[r.reading_date] += Number(r.consumption); });
+      datasets = [{
+        label: `${selectedGroup} Consumption`,
+        data: labels.map(d => dayMap[d]),
+        backgroundColor: PALETTE[0].bg,
+        borderColor: PALETTE[0].border,
+        borderWidth: 1,
+        borderRadius: 3
+      }];
+    } else {
+      datasets = meterCodes.map((code, i) => {
+        const c = PALETTE[i % PALETTE.length];
+        const dayMap = Object.fromEntries(labels.map(d => [d, 0]));
+        const mRow = cumulRows.find(r => r.meters?.meter_code === code);
+        const label = mRow?.meters?.name ? `${code} (${mRow.meters.name})` : code;
+        cumulRows.filter(r => (r.meters?.meter_code || "Other") === code)
+          .forEach(r => { if (dayMap[r.reading_date] !== undefined) dayMap[r.reading_date] += Number(r.consumption); });
+        return {
+          label,
+          data: labels.map(d => dayMap[d]),
+          backgroundColor: c.bg,
+          borderColor: c.border,
+          borderWidth: 1,
+          borderRadius: 3
+        };
+      });
+    }
+  } else {
+    // All groups — stacked bars, one dataset per group
+    const groups = [...new Set(cumulRows.map(r => r.meters?.meter_group || "Other"))].sort();
+    datasets = groups.length === 0
+      ? [{ label: "Consumption", data: labels.map(() => 0), backgroundColor: PALETTE[0].bg, borderColor: PALETTE[0].border, borderWidth: 1, borderRadius: 3 }]
+      : groups.map((g, i) => {
+          const c = PALETTE[i % PALETTE.length];
+          const dayMap = Object.fromEntries(labels.map(d => [d, 0]));
+          cumulRows.filter(r => (r.meters?.meter_group || "Other") === g)
+            .forEach(r => { if (dayMap[r.reading_date] !== undefined) dayMap[r.reading_date] += Number(r.consumption); });
+          return { label: g, data: labels.map(d => dayMap[d]), backgroundColor: c.bg, borderColor: c.border, borderWidth: 1, borderRadius: 3 };
+        });
+  }
+
+  const xLabels = labels.map(d => { const dt = new Date(d + "T00:00:00"); return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" }); });
+  const stacked = datasets.length > 1;
+
+  reportChartInstance = new Chart(document.getElementById("report-chart"), {
+    type: "bar",
+    data: { labels: xLabels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: stacked,
+          labels: { color: "#8B9198", font: { family: "'Oswald', sans-serif", size: 11 } }
+        },
+        tooltip: {
+          backgroundColor: "#24282C",
+          borderColor: "#383E44",
+          borderWidth: 1,
+          titleColor: "#E8EAED",
+          bodyColor: "#8B9198",
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(2)}` }
+        }
+      },
+      scales: {
+        x: { stacked, grid: { color: "#383E44" }, ticks: { color: "#8B9198", font: { family: "'JetBrains Mono', monospace", size: 10 } } },
+        y: { stacked, beginAtZero: true, grid: { color: "#383E44" }, ticks: { color: "#8B9198", font: { family: "'JetBrains Mono', monospace", size: 10 } } }
+      }
+    }
+  });
+}
+
+function renderReportTable(rows, reset = false) {
+  const body        = document.getElementById("rp-table-body");
+  const empty       = document.getElementById("rp-table-empty");
+  const loadMoreWrap = document.getElementById("rp-load-more-wrap");
+
+  if (reset) { body.innerHTML = ""; reportDisplayedCount = 0; }
+
+  const slice = rows.slice(reportDisplayedCount, reportDisplayedCount + REPORT_PAGE_SIZE);
+  reportDisplayedCount += slice.length;
+
+  document.getElementById("rp-table-count").textContent = `${rows.length.toLocaleString()} records`;
+  empty.classList.toggle("hidden", rows.length > 0);
+  loadMoreWrap.classList.toggle("hidden", reportDisplayedCount >= rows.length);
+
+  slice.forEach(r => {
+    const isGauge  = r.meters?.value_type === "gauge";
+    const consNum  = !isGauge && r.consumption != null ? Number(r.consumption) : null;
+    let costStr = "";
+    if (consNum != null && consNum > 0) {
+      const rate = r.meters?.cost_per_unit != null ? Number(r.meters.cost_per_unit) : state.costRates[r.meters?.meter_type];
+      if (typeof rate === "number") costStr = `₹${(consNum * rate).toFixed(2)}`;
+    }
+    const tr = document.createElement("tr");
+    if (consNum != null && consNum < 0) tr.style.background = "rgba(229,72,77,0.07)";
+    tr.innerHTML = `
+      <td>${r.reading_date}</td>
+      <td>${fmtTime(r.recorded_at)}</td>
+      <td style="font-weight:700;">${r.meters?.meter_code || ""}</td>
+      <td>${r.meters?.name || ""}</td>
+      <td>${r.meters?.meter_group || "—"}</td>
+      <td>${r.shift}</td>
+      <td>${r.reading_value} ${r.meters?.unit || ""}</td>
+      <td style="${consNum != null && consNum < 0 ? "color:var(--red);" : ""}">${isGauge ? "—" : (consNum != null ? consNum.toFixed(2) : "—")}</td>
+      <td>${costStr || "—"}</td>
+      <td>${r.operators?.name || ""}</td>
+      <td style="color:var(--text-muted); font-size:11px;">${r.notes || ""}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+function exportReportCsv() {
+  if (reportAllRows.length === 0) { toast("Nothing to export", "err"); return; }
+  const from = document.getElementById("rp-from").value;
+  const to   = document.getElementById("rp-to").value;
+  const group = document.getElementById("rp-group").value;
+  const groupTag = group ? `-${group.toLowerCase().replace(/\s+/g, "_")}` : "";
+  const headers = ["Date","Time","Meter Code","Meter Name","Location","Group","Shift","Reading","Unit","Consumption","Est. Cost","Operator","Notes"];
+  const lines = [headers.join(",")];
+  reportAllRows.forEach(r => {
+    const isGauge = r.meters?.value_type === "gauge";
+    const consNum = !isGauge && r.consumption != null ? Number(r.consumption) : null;
+    let costStr = "";
+    if (consNum != null && consNum > 0) {
+      const rate = r.meters?.cost_per_unit != null ? Number(r.meters.cost_per_unit) : state.costRates[r.meters?.meter_type];
+      if (typeof rate === "number") costStr = (consNum * rate).toFixed(2);
+    }
+    lines.push([
+      r.reading_date, fmtTime(r.recorded_at),
+      r.meters?.meter_code, r.meters?.name, r.meters?.location, r.meters?.meter_group,
+      r.shift, r.reading_value, r.meters?.unit,
+      consNum != null ? consNum.toFixed(2) : "", costStr,
+      r.operators?.name, r.notes || ""
+    ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+  });
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = `meter-report${groupTag}-${from}-to-${to}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
