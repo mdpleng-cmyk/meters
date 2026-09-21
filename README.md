@@ -86,7 +86,7 @@ Realtime broadcasts the change → tile grid AND Control Room dashboard update i
 
 - **Level gate lives in two places**: the JS helper functions (`isRoundLevel()` etc.) and the DB functions (`is_admin()`, `is_control_room_or_admin()`). Change one, check the other.
 - **`reading_mode` is permanent per meter** — a physical device needing more than one tracked value becomes multiple `meters` rows (same `meter_group`), not one meter with two modes.
-- **Missed readings** — Control Room/Admin can use the Backdated Reading form with the actual date and a reason. Operators can edit their own same-day reading for up to 8 hours after submission; the date, meter, shift, and operator cannot be changed.
+- **Missed readings** — Control Room/Admin can use the Backdated Reading form with the actual date and a reason. Operators can edit their own reading for up to 8 hours after submission; the meter, shift, and operator cannot be changed, while the reading date remains editable and is audited.
 - **Consumption is still a generated column** — never write to it directly.
 - **The trigger only fires on INSERT**, not UPDATE — Control Room manually editing a `reading_value` later leaves that row's `previous_reading` as originally recorded.
 - **`cost_per_unit` is optional and per-meter** — the modal only shows an estimated cost row when it's set; don't reintroduce a single global rate, since different meter types (kWh vs hours vs kg) aren't comparable.

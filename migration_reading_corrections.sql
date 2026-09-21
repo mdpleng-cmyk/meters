@@ -9,10 +9,15 @@ create table if not exists public.meter_reading_audit (
   new_reading_value numeric,
   old_reading_date date,
   new_reading_date date,
-  changed_by uuid not null references public.operators(id),
+  changed_by uuid references public.operators(id),
   changed_at timestamptz not null default now(),
   reason text
 );
+
+-- Supabase Table Editor changes have no auth.uid(); keep those audit rows
+-- with a null actor instead of failing the underlying reading update.
+alter table public.meter_reading_audit
+  alter column changed_by drop not null;
 
 alter table public.meter_reading_audit enable row level security;
 
@@ -34,7 +39,6 @@ begin
     if old.recorded_by <> auth.uid()
        or old.recorded_at < now() - interval '8 hours'
        or new.meter_id <> old.meter_id
-       or new.reading_date <> old.reading_date
        or new.shift <> old.shift
        or new.recorded_by <> old.recorded_by
        or new.recorded_at <> old.recorded_at then
@@ -128,7 +132,16 @@ begin
     order by p.reading_date desc, p.recorded_at desc
     limit 1
   )
-  where r.meter_id = new.meter_id;
+  where r.meter_id = new.meter_id
+    and r.previous_reading is distinct from (
+      select p.reading_value
+      from public.meter_readings p
+      where p.meter_id = r.meter_id
+        and p.id <> r.id
+        and (p.reading_date, p.recorded_at) < (r.reading_date, r.recorded_at)
+      order by p.reading_date desc, p.recorded_at desc
+      limit 1
+    );
   return new;
 end;
 $$;
