@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   :root {
     --bg: #1B1E21; --panel: #24282C; --panel-raised: #2A2F34; --border: #383E44;
@@ -86,6 +87,19 @@
   #rm-trend-box { background: var(--panel-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px; }
   #rm-readonly-note { font-size: 12px; color: var(--text-muted); text-align: center; margin: 0 0 12px; }
   .rm-view-badge { display: inline-block; font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--amber); background: rgba(255,176,32,0.12); border: 1px solid var(--amber-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 8px; }
+  /* ---- Report Tab ---- */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  @media (max-width: 700px) { .kpi-grid { grid-template-columns: 1fr 1fr; } }
+  .kpi-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .kpi-value { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 700; color: var(--amber); margin-top: 6px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .preset-btns { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
+  .preset-btn { font-size: 10px; padding: 5px 9px; }
+  .preset-btn.active { background: rgba(255,176,32,0.12); border-color: var(--amber-dim); color: var(--amber); }
+  .report-chart-wrap { position: relative; height: 280px; }
+  @media (max-width: 600px) { .report-chart-wrap { height: 200px; } }
+  .rp-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+  .rp-filters > div { min-width: 120px; }
+  .rp-filters label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
 </style>
 </head>
 <body>
@@ -119,6 +133,7 @@
       <div class="tab-nav" id="tab-switch">
         <button data-tab="entry" id="entry-tab-btn" class="tab-btn active">Entry</button>
         <button data-tab="dashboard" id="dashboard-tab-btn" class="tab-btn hidden">Control Room</button>
+        <button data-tab="report" id="report-tab-btn" class="tab-btn hidden">Reports</button>
       </div>
       <button id="logout-btn" style="padding:6px 10px; font-size:11px;">Exit</button>
     </div>
@@ -815,10 +830,24 @@ async function loadMeterTrend(m) {
   for (let i = 0; i < perDay.length; i++) {
     const row = perDay[i];
     let cons = row.consumption != null ? Number(row.consumption) : null;
-    if (cons === null && i > 0) {
-      cons = Number(row.reading_value) - Number(perDay[i - 1].reading_value);
+    let normalized = false;
+
+    if (i > 0) {
+      const prevRow = perDay[i - 1];
+      const gapDays = daysBetweenDates(row.reading_date, prevRow.reading_date);
+      if (gapDays > 1) {
+        normalized = true;
+      }
+      if (cons === null) {
+        cons = Number(row.reading_value) - Number(prevRow.reading_value);
+        normalized = true;
+      }
+      if (gapDays > 1 && cons !== null) {
+        cons = cons / gapDays;
+      }
     }
-    if (cons !== null) points.push({ reading_date: row.reading_date, consumption: cons });
+
+    if (cons !== null) points.push({ reading_date: row.reading_date, consumption: cons, normalized });
   }
   return points.slice(-7);
 }
@@ -872,7 +901,13 @@ function renderTrendSparkline(points, opts = {}) {
   const pathD = coords.map((c, i) => (i === 0 ? "M" : "L") + c[0].toFixed(1) + "," + c[1].toFixed(1)).join(" ");
   const dots = coords.map((c, i) => {
     const isLast = i === coords.length - 1;
-    return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="${isLast ? 3.5 : 2.5}" style="fill:${isLast ? "var(--amber)" : "var(--text-muted)"};" />`;
+    const point = points[i];
+    const isNormalized = !!(point && point.normalized);
+    const fill = isNormalized ? "#60A5FA" : isLast ? "var(--amber)" : "var(--text-muted)";
+    const stroke = isNormalized ? "#DBEAFE" : "transparent";
+    const radius = isLast ? 3.5 : 2.5;
+    const strokeWidth = isNormalized ? 2 : 0;
+    return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="${radius}" style="fill:${fill}; stroke:${stroke}; stroke-width:${strokeWidth};" aria-label="${isNormalized ? 'Normalized daily estimate' : 'Daily reading'}" title="${isNormalized ? 'Normalized daily estimate from elapsed interval' : 'Daily reading'}" />`;
   }).join("");
 
   const axisLines = zeroBaseline ? `
@@ -914,11 +949,52 @@ function renderTrendSparkline(points, opts = {}) {
   }
 }
 
+function median(numbers) {
+  if (!numbers || numbers.length === 0) return null;
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+  return sorted[middle];
+}
+
+async function loadMeterDailyBaseline(m) {
+  const { data, error } = await sb.from("meter_readings")
+    .select("reading_value, reading_date")
+    .eq("meter_id", m.id)
+    .order("reading_date", { ascending: false })
+    .limit(12);
+
+  if (error) {
+    console.error("daily baseline lookup failed:", error);
+    return null;
+  }
+  if (!data || data.length < 2) return null;
+
+  const ascending = [...data].sort((a, b) => new Date(a.reading_date) - new Date(b.reading_date));
+  const dailyRates = [];
+
+  for (let i = 1; i < ascending.length; i++) {
+    const prevVal = Number(ascending[i - 1].reading_value);
+    const currVal = Number(ascending[i].reading_value);
+    const days = daysBetweenDates(ascending[i].reading_date, ascending[i - 1].reading_date);
+    const delta = currVal - prevVal;
+
+    if (days > 0 && delta > 0) {
+      dailyRates.push(delta / days);
+    }
+  }
+
+  return dailyRates.length ? median(dailyRates) : null;
+}
+
 async function openTileModal(m, readOnly = false) {
   state.tileModalMeter = m;
   state.tileModalShiftTag = expectedShiftTag(m);
   state.tileModalReadOnly = readOnly;
   state.tileModalRowId = null;
+  state.tileModalBaselineDaily = null;
   const isGauge = m.value_type === "gauge";
   state.tileModalIsGauge = isGauge;
   const isHourly = m.reading_mode === "hourly";
@@ -1033,22 +1109,23 @@ async function openTileModal(m, readOnly = false) {
 
     state.tileModalPrevious = data ? Number(data.reading_value) : null;
     state.tileModalPreviousDate = data ? data.reading_date : null;
+    state.tileModalBaselineDaily = await loadMeterDailyBaseline(m);
     document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
 
     let lastConsumption = data && data.consumption != null ? Number(data.consumption) : null;
     if (lastConsumption === null && data && prior) {
       lastConsumption = Number(data.reading_value) - Number(prior.reading_value);
     }
-    // A skipped day makes the delta a multi-day total, so do not compare it
-    // with the previous single interval as though both were one day.
-    state.tileModalLastConsumption = gapDays > 1 ? null : lastConsumption;
+    // A skipped day makes the delta a multi-day total; compare against the
+    // meter's average daily rate instead of the last single interval.
+    state.tileModalLastConsumption = lastConsumption;
 
     if (data && lastConsumption !== null) {
       const dayLabel = data.reading_date === yesterdayStr()
         ? "Yesterday"
         : new Date(data.reading_date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
       prevConsumptionEl.textContent = gapDays > 1
-        ? `Last reading was ${gapDays} days ago. The estimate below covers the full interval.`
+        ? `Last reading was ${gapDays} days ago. The baseline below is normalized by elapsed days.`
         : `${dayLabel}'s consumption: ${lastConsumption.toFixed(2)} ${m.unit}`;
       prevConsumptionEl.style.color = lastConsumption < 0 ? "var(--red)" : "var(--text-muted)";
       if (gapDays > 1) {
@@ -1110,10 +1187,12 @@ function updateTileModalConsumption() {
     document.getElementById("rm-consumption-value").textContent = `${consumption.toFixed(2)} ${state.tileModalMeter.unit}`;
     box.style.background = consumption < 0 ? "var(--red-bg)" : "var(--green-bg)";
 
-    const lastConsumption = state.tileModalLastConsumption;
-    if (lastConsumption !== null && lastConsumption !== 0) {
-      const pct = ((consumption - lastConsumption) / Math.abs(lastConsumption)) * 100;
-      changeEl.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}% vs last`;
+    const baselineDaily = state.tileModalBaselineDaily;
+    const intervalDays = state.tileModalPreviousDate ? Math.max(daysBetweenDates(todayStr(), state.tileModalPreviousDate), 1) : 1;
+    const currentDaily = consumption / intervalDays;
+    if (baselineDaily !== null && baselineDaily !== 0) {
+      const pct = ((currentDaily - baselineDaily) / Math.abs(baselineDaily)) * 100;
+      changeEl.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}% vs avg`;
       changeEl.style.color = pct >= 0 ? "var(--green)" : "var(--red)";
     } else {
       changeEl.textContent = "";
@@ -1171,15 +1250,17 @@ document.getElementById("rm-review-btn").onclick = () => {
     const consChangeEl = document.getElementById("rm-c-consumption-change");
     const costChangeEl = document.getElementById("rm-c-cost-change");
 
-    // % change vs the last recorded consumption for this meter (same
-    // rate applies to both, so cost moves by the same %). Also drives
-    // the abnormal-spike warning below.
-    const lastConsumption = state.tileModalLastConsumption;
+    // Compare the entered interval against the meter's historical daily
+    // average, not just the previous single-day delta. This keeps the check
+    // meaningful even when one or more days were missed.
     let pct = null;
     let changeText = "";
     let changeColor = "var(--text-muted)";
-    if (consumption !== null && lastConsumption !== null && lastConsumption !== 0) {
-      pct = ((consumption - lastConsumption) / Math.abs(lastConsumption)) * 100;
+    const baselineDaily = state.tileModalBaselineDaily;
+    const intervalDays = state.tileModalPreviousDate ? Math.max(daysBetweenDates(todayStr(), state.tileModalPreviousDate), 1) : 1;
+    const currentDaily = consumption !== null ? consumption / intervalDays : null;
+    if (consumption !== null && currentDaily !== null && baselineDaily !== null && baselineDaily !== 0) {
+      pct = ((currentDaily - baselineDaily) / Math.abs(baselineDaily)) * 100;
       changeText = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
       changeColor = pct >= 0 ? "var(--green)" : "var(--red)";
     }
@@ -1208,17 +1289,15 @@ document.getElementById("rm-review-btn").onclick = () => {
       costRow.classList.add("hidden");
     }
 
-    // Abnormal-spike check: consumption running 30%+ away from the last
-    // recorded consumption for this meter, in either direction. Separate
-    // from the low-reading (possible reset) warning above — both need
-    // explicit confirmation, but with different messaging and, for the
-    // reset case, an extra checkbox (see below).
+    // Abnormal-spike check: normalized daily consumption running 30%+ away
+    // from the meter's historical average, even when the gap spans multiple
+    // days. Separate from the low-reading (possible reset) warning above.
     const isAbnormalSpike = pct !== null && Math.abs(pct) > ABNORMAL_CONSUMPTION_PCT;
 
     if (isLow) {
-      warning.textContent = "⚠️ Reading is lower than previous. Save only if the meter was physically reset or replaced.";
+      warning.textContent = "⚠️ Reading is lower than previous. Save only if the meter was physically reset.";
     } else if (isAbnormalSpike) {
-      warning.textContent = `⚠️ Consumption is ${changeText} ${pct >= 0 ? "above" : "below"} the recent trend. Double-check before saving.`;
+      warning.textContent = `⚠️ Daily consumption is ${changeText} ${pct >= 0 ? "above" : "below"} the meter's historical average. Double-check before saving.`;
     }
     warning.classList.toggle("hidden", !(isLow || isAbnormalSpike));
     document.getElementById("rm-save-btn").className = "big " + ((isLow || isAbnormalSpike) ? "warn" : "primary");
@@ -1276,7 +1355,7 @@ document.getElementById("rm-save-btn").onclick = async () => {
     recorded_by: state.operator.id,
     shift: state.tileModalShiftTag,
     reading_date: todayStr(),
-    notes: isLow ? "possible reset/replacement — confirmed by operator" : null,
+    notes: isLow ? "possible reset — confirmed by operator" : null,
   };
   const result = state.tileModalRowId
     ? await sb.from("meter_readings").update(reading).eq("id", state.tileModalRowId)
