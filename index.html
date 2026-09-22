@@ -75,9 +75,12 @@
   .round-tile:active { transform: translateY(1px); }
   .round-tile.done { background: var(--green-bg); border-color: rgba(62,207,142,0.35); }
   .round-tile.hourly-tile { border-color: var(--amber-dim); }
+  .round-tile.warn-val { background: var(--red-bg); border-color: rgba(229,72,77,0.35); }
   .round-tile .rt-name { font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.3; }
-  .round-tile .rt-code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .round-tile .rt-status { font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 8px; }
+  .round-tile .rt-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; margin-top: 6px; line-height: 1.2; display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
+  .round-tile .rt-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 400; color: var(--text-muted); margin-left: 4px; }
+  .round-tile .rt-pct { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; background: rgba(0, 0, 0, 0.22); white-space: nowrap; }
+  .round-tile .rt-status { font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 3px; }
   .progress-track { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; height: 8px; overflow: hidden; margin-top: 10px; }
   .progress-fill { background: var(--amber); height: 100%; }
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 100; }
@@ -414,8 +417,8 @@
         <table style="min-width:820px;">
           <thead>
             <tr>
-              <th>Date</th><th>Time</th><th>Meter</th><th>Name</th><th>Group</th><th>Shift</th>
-              <th>Reading</th><th>Consumption</th><th>Est. Cost</th><th>Operator</th><th>Notes</th>
+              <th>Date</th><th>Time</th><th>Meter</th><th>Name</th><th>Reading</th><th>Group</th><th>Shift</th>
+              <th>Consumption</th><th>Est. Cost</th><th>Operator</th><th>Notes</th>
             </tr>
           </thead>
           <tbody id="rp-table-body"></tbody>
@@ -786,19 +789,43 @@ async function refreshTileGrid() {
   }
   emptyMsg.classList.add("hidden");
 
-  // One query for today's readings across every meter in this view,
-  // regardless of shift — then check each meter against its own
-  // expected tag (Round, the currently selected shift, or Hourly).
-  // Also track the latest recorded_at per meter for the free-log
-  // "last logged at HH:MM" display on Hourly tiles.
-  const { data, error } = await sb.from("meter_readings").select("meter_id, shift, recorded_at")
-    .eq("reading_date", todayStr()).in("meter_id", tileMeters.map(m => m.id))
-    .order("recorded_at", { ascending: false });
+  // Parallel fetch:
+  // 1) All readings recorded today for meters in this view
+  // 2) Most recent readings before today to compute % +/- change
+  const [todayRes, priorRes] = await Promise.all([
+    sb.from("meter_readings")
+      .select("id, meter_id, shift, recorded_at, reading_value, consumption, reading_date")
+      .eq("reading_date", todayStr()).in("meter_id", tileMeters.map(m => m.id))
+      .order("recorded_at", { ascending: false }),
+    sb.from("meter_readings")
+      .select("id, meter_id, shift, recorded_at, reading_value, consumption, reading_date")
+      .lt("reading_date", todayStr()).in("meter_id", tileMeters.map(m => m.id))
+      .order("reading_date", { ascending: false })
+      .order("recorded_at", { ascending: false })
+      .limit(tileMeters.length * 3)
+  ]);
+
+  const todayData = todayRes.data || [];
+  const priorData = priorRes.data || [];
+
   const readMap = {};
-  (error ? [] : data).forEach(r => {
-    const entry = (readMap[r.meter_id] ||= { tags: new Set(), lastTime: null });
+  todayData.forEach(r => {
+    const entry = (readMap[r.meter_id] ||= { tags: new Set(), lastTime: null, lastReading: null, byShift: {}, rows: [] });
     entry.tags.add(r.shift);
-    if (!entry.lastTime) entry.lastTime = r.recorded_at; // rows are ordered newest-first
+    entry.rows.push(r);
+    if (!entry.lastTime) {
+      entry.lastTime = r.recorded_at; // rows are ordered newest-first
+      entry.lastReading = r;
+    }
+    if (!entry.byShift[r.shift]) {
+      entry.byShift[r.shift] = r;
+    }
+  });
+
+  // Group prior readings by meter_id (newest prior first)
+  const priorByMeter = {};
+  priorData.forEach(r => {
+    (priorByMeter[r.meter_id] ||= []).push(r);
   });
 
   grid.innerHTML = "";
@@ -809,27 +836,109 @@ async function refreshTileGrid() {
 
   tileMeters.forEach(m => {
     const isHourly = m.reading_mode === "hourly";
+    const isGauge = m.value_type === "gauge";
     const entry = readMap[m.id];
     const tile = document.createElement("button");
     tile.type = "button";
 
+    function formatPctBadge(pct) {
+      if (pct === null || isNaN(pct)) return "";
+      const absPct = Math.abs(pct).toFixed(1);
+      if (Math.abs(pct) < 0.1) {
+        return `<span class="rt-pct" style="color:var(--text-muted);">~0%</span>`;
+      }
+      if (pct > 0) {
+        const color = pct <= 15 ? "var(--amber)" : "var(--red)";
+        return `<span class="rt-pct" style="color:${color};">▲ +${absPct}%</span>`;
+      } else {
+        return `<span class="rt-pct" style="color:var(--green);">▼ -${absPct}%</span>`;
+      }
+    }
+
     if (isHourly) {
       tile.className = "round-tile hourly-tile";
-      const statusText = entry?.lastTime ? `Last logged ${fmtTime(entry.lastTime)} — tap to log again` : "Tap to log";
-      tile.innerHTML = `
-        <div class="rt-name">${m.name}</div>
-        <div class="rt-code">${m.meter_code}</div>
-        <div class="rt-status" style="color:${entry?.lastTime ? "var(--amber)" : "var(--text-muted)"};">${statusText}</div>
-      `;
+      const lastRdg = entry?.lastReading;
+      if (lastRdg) {
+        const valStr = parseFloat(Number(lastRdg.reading_value).toFixed(2));
+        const prevRdg = (entry.rows && entry.rows.length > 1) ? entry.rows[1] : priorByMeter[m.id]?.[0];
+        let pctBadge = "";
+        if (prevRdg && prevRdg.reading_value != null) {
+          const currVal = Number(lastRdg.reading_value);
+          const prevVal = Number(prevRdg.reading_value);
+          if (!isNaN(currVal) && !isNaN(prevVal) && prevVal !== 0) {
+            pctBadge = formatPctBadge(((currVal - prevVal) / Math.abs(prevVal)) * 100);
+          }
+        }
+
+        tile.innerHTML = `
+          <div class="rt-name">${m.name}</div>
+          <div class="rt-value" style="color:var(--amber);">
+            <span>${valStr} ${m.unit || ""} <span class="rt-time">(${fmtTime(entry.lastTime)})</span></span>
+            ${pctBadge}
+          </div>
+          <div class="rt-status" style="color:var(--text-muted);">Tap to log again</div>
+        `;
+      } else {
+        tile.innerHTML = `
+          <div class="rt-name">${m.name}</div>
+          <div class="rt-status" style="color:var(--text-muted); margin-top:8px;">Tap to log</div>
+        `;
+      }
       tile.onclick = () => openTileModal(m, false);
     } else {
-      const isDone = !!entry?.tags.has(expectedShiftTag(m));
+      const shiftTag = expectedShiftTag(m);
+      const isDone = !!entry?.tags.has(shiftTag);
+      const readingRow = isDone ? (entry?.byShift?.[shiftTag] || entry?.lastReading) : null;
       if (isDone) doneCount++;
-      tile.className = "round-tile" + (isDone ? " done" : "");
+
+      let statText = "";
+      let isNegative = false;
+      let pctBadge = "";
+
+      if (isDone && readingRow) {
+        const prevRow = priorByMeter[m.id]?.[0];
+
+        if (isGauge) {
+          const valStr = parseFloat(Number(readingRow.reading_value).toFixed(2));
+          statText = `${valStr} ${m.unit || ""}`;
+
+          if (prevRow && prevRow.reading_value != null) {
+            const currVal = Number(readingRow.reading_value);
+            const prevVal = Number(prevRow.reading_value);
+            if (!isNaN(currVal) && !isNaN(prevVal) && prevVal !== 0) {
+              pctBadge = formatPctBadge(((currVal - prevVal) / Math.abs(prevVal)) * 100);
+            }
+          }
+        } else if (readingRow.consumption != null) {
+          const cons = Number(readingRow.consumption);
+          const consStr = parseFloat(cons.toFixed(2));
+          isNegative = cons < 0;
+          statText = cons > 0 ? `+${consStr} ${m.unit || ""}` : `${consStr} ${m.unit || ""}`;
+
+          if (!isNegative && prevRow && prevRow.consumption != null) {
+            const prevCons = Number(prevRow.consumption);
+            if (!isNaN(prevCons) && prevCons > 0 && cons >= 0) {
+              pctBadge = formatPctBadge(((cons - prevCons) / prevCons) * 100);
+            }
+          }
+        } else {
+          const valStr = parseFloat(Number(readingRow.reading_value).toFixed(2));
+          statText = `${valStr} ${m.unit || ""}`;
+        }
+      }
+
+      tile.className = "round-tile" + (isDone ? " done" : "") + (isNegative ? " warn-val" : "");
       tile.innerHTML = `
         <div class="rt-name">${m.name}</div>
-        <div class="rt-code">${m.meter_code}</div>
-        <div class="rt-status" style="color:${isDone ? "var(--green)" : "var(--text-muted)"};">${isDone ? "✓ Done — tap to review" : "Tap to read"}</div>
+        ${isDone ? `
+          <div class="rt-value" style="color:${isNegative ? 'var(--red)' : 'var(--green)'};">
+            <span>${isNegative ? '⚠️ ' : '✓ '}${statText}</span>
+            ${pctBadge}
+          </div>
+          <div class="rt-status" style="color:var(--text-muted);">Tap to review</div>
+        ` : `
+          <div class="rt-status" style="color:var(--text-muted); margin-top:8px;">Tap to read</div>
+        `}
       `;
       tile.onclick = () => openTileModal(m, isDone);
     }
@@ -2066,9 +2175,9 @@ function renderReportTable(rows, reset = false) {
       <td>${fmtTime(r.recorded_at)}</td>
       <td style="font-weight:700;">${r.meters?.meter_code || ""}</td>
       <td>${r.meters?.name || ""}</td>
+      <td>${r.reading_value} ${r.meters?.unit || ""}</td>
       <td>${r.meters?.meter_group || "—"}</td>
       <td>${r.shift}</td>
-      <td>${r.reading_value} ${r.meters?.unit || ""}</td>
       <td style="${consNum != null && consNum < 0 ? "color:var(--red);" : ""}">${isGauge ? "—" : (consNum != null ? consNum.toFixed(2) : "—")}</td>
       <td>${costStr || "—"}</td>
       <td>${r.operators?.name || ""}</td>
@@ -2084,7 +2193,7 @@ function exportReportCsv() {
   const to   = document.getElementById("rp-to").value;
   const group = document.getElementById("rp-group").value;
   const groupTag = group ? `-${group.toLowerCase().replace(/\s+/g, "_")}` : "";
-  const headers = ["Date","Time","Meter Code","Meter Name","Location","Group","Shift","Reading","Unit","Consumption","Est. Cost","Operator","Notes"];
+  const headers = ["Date","Time","Meter Code","Meter Name","Reading","Unit","Location","Group","Shift","Consumption","Est. Cost","Operator","Notes"];
   const lines = [headers.join(",")];
   reportAllRows.forEach(r => {
     const isGauge = r.meters?.value_type === "gauge";
@@ -2096,8 +2205,10 @@ function exportReportCsv() {
     }
     lines.push([
       r.reading_date, fmtTime(r.recorded_at),
-      r.meters?.meter_code, r.meters?.name, r.meters?.location, r.meters?.meter_group,
-      r.shift, r.reading_value, r.meters?.unit,
+      r.meters?.meter_code, r.meters?.name,
+      r.reading_value, r.meters?.unit,
+      r.meters?.location, r.meters?.meter_group,
+      r.shift,
       consNum != null ? consNum.toFixed(2) : "", costStr,
       r.operators?.name, r.notes || ""
     ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
