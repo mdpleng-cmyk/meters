@@ -22,7 +22,7 @@
   h1 { font-family: 'Oswald', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin: 2px 0 0; color: var(--text); }
   h1 span { color: var(--amber); }
   header.appbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; }
-  select, input[type=number], input[type=date], input[type=text] { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 9px 10px; font-family: 'JetBrains Mono', monospace; font-size: 14px; width: 100%; }
+  select, input[type=number], input[type=date], input[type=text], input[type=email], input[type=password] { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 9px 10px; font-family: 'JetBrains Mono', monospace; font-size: 14px; width: 100%; }
   select:focus, input:focus { outline: none; border-color: var(--amber-dim); }
   input::placeholder { color: var(--text-muted); }
   input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -111,16 +111,19 @@
 <div id="login-screen" class="wrap" style="min-height:100vh; display:flex; flex-direction:column; justify-content:center;">
   <div class="eyebrow" style="text-align:center;">MDPL &middot; Utilities</div>
   <h1 style="text-align:center; margin-bottom:6px;">Meter <span>Readings</span></h1>
-  <p id="login-subtitle" class="readout-empty" style="text-align:center; margin-bottom:20px;">Tap your name to sign in</p>
+  <p id="login-subtitle" class="readout-empty" style="text-align:center; margin-bottom:20px;">Sign in to continue</p>
 
-  <div id="operator-picker" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;"></div>
-
-  <div id="pin-pad-screen" class="hidden">
-    <button id="pin-back-btn" style="margin-bottom:14px;">&larr; Back</button>
-    <p style="text-align:center; font-family:'Oswald',sans-serif; font-size:16px; margin-bottom:16px;" id="pin-operator-name"></p>
-    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;" id="pin-dots"></div>
-    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;" id="pin-keys"></div>
-  </div>
+  <form id="login-form" class="panel" style="margin-bottom:0;" autocomplete="on">
+    <div class="field">
+      <label class="field-label" for="login-email">Email address</label>
+      <input id="login-email" name="email" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="name@mdpl.local" required />
+    </div>
+    <div class="field">
+      <label class="field-label" for="login-password">Password</label>
+      <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Password" required />
+    </div>
+    <button type="submit" class="primary big" id="login-submit-btn">Sign In</button>
+  </form>
 
   <p id="login-error" class="hidden" style="color:var(--red); font-size:13px; text-align:center; margin-top:14px;"></p>
 </div>
@@ -145,13 +148,19 @@
   <!-- ---------- TILE VIEW (all reading-taking levels) ---------- -->
   <main id="tile-view" class="wrap">
     <div class="panel">
-      <div id="tile-shift-field" class="field hidden">
-        <label class="field-label">Shift</label>
-        <select id="tile-shift-select">
-          <option>Morning</option>
-          <option>Evening</option>
-          <option>Night</option>
-        </select>
+      <div class="grid2">
+        <div class="field" style="margin-bottom:0;">
+          <label class="field-label">Date</label>
+          <input id="tile-date-select" type="date" />
+        </div>
+        <div id="tile-shift-field" class="field hidden" style="margin-bottom:0;">
+          <label class="field-label">Shift</label>
+          <select id="tile-shift-select">
+            <option>Morning</option>
+            <option>Evening</option>
+            <option>Night</option>
+          </select>
+        </div>
       </div>
       <span class="section-label" style="margin:0;" id="tile-title">Today's Round</span>
       <p class="readout-empty" style="margin-top:4px;">Tap a meter, add its reading. Done ones turn green — tap them again to review.</p>
@@ -194,40 +203,6 @@
         </div>
         <button id="export-btn" class="primary" style="margin-left:auto;">Export CSV</button>
       </div>
-    </div>
-
-    <div id="backfill-panel" class="panel hidden">
-      <span class="section-label">Backdated Reading</span>
-      <p class="readout-empty" style="margin:0 0 12px;">For missed readings only. Use the actual reading date and add a reason.</p>
-      <form id="backfill-form">
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label">Meter</label>
-            <select id="bf-meter" required></select>
-          </div>
-          <div class="field">
-            <label class="field-label">Reading Date</label>
-            <input id="bf-date" type="date" required />
-          </div>
-        </div>
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label">Reading</label>
-            <input id="bf-value" type="number" step="any" required />
-          </div>
-          <div class="field">
-            <label class="field-label">Shift</label>
-            <select id="bf-shift">
-              <option>Round</option><option>Morning</option><option>Evening</option><option>Night</option><option>Hourly</option>
-            </select>
-          </div>
-        </div>
-        <div class="field">
-          <label class="field-label">Reason</label>
-          <input id="bf-note" type="text" placeholder="e.g. Missed reading on scheduled round" required />
-        </div>
-        <button type="submit" id="bf-submit-btn" class="primary">Save Backdated Reading</button>
-      </form>
     </div>
 
     <!-- ---------- ADD METER (Admin only) ---------- -->
@@ -327,7 +302,7 @@
         <table>
           <thead>
             <tr>
-              <th>Time</th><th>Meter</th><th>Location</th><th>Shift</th><th>Reading</th><th>Consumption</th><th>Operator</th>
+              <th>Time</th><th>Meter</th><th>Location</th><th>Shift</th><th>Reading</th><th>Consumption</th><th>Operator</th><th>Action</th>
             </tr>
           </thead>
           <tbody id="live-table-body"></tbody>
@@ -418,7 +393,7 @@
           <thead>
             <tr>
               <th>Date</th><th>Time</th><th>Meter</th><th>Name</th><th>Reading</th><th>Group</th><th>Shift</th>
-              <th>Consumption</th><th>Est. Cost</th><th>Operator</th><th>Notes</th>
+              <th>Consumption</th><th>Est. Cost</th><th>Operator</th><th>Notes</th><th>Action</th>
             </tr>
           </thead>
           <tbody id="rp-table-body"></tbody>
@@ -493,10 +468,14 @@
         </div>
       </div>
       <p id="rm-c-warning" class="hidden" style="font-size:12px; color:var(--amber); margin-bottom:12px; text-align:center;"></p>
-      <label id="rm-reset-confirm-wrap" class="hidden" style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text); margin-bottom:12px; cursor:pointer;">
-        <input type="checkbox" id="rm-reset-confirm-checkbox" style="width:16px; height:16px; flex-shrink:0;" />
-        I confirm the meter was physically reset or replaced
-      </label>
+      <div id="rm-reset-confirm-wrap" class="hidden" style="margin-bottom:12px;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text); cursor:pointer; margin-bottom:8px;">
+          <input type="checkbox" id="rm-reset-confirm-checkbox" style="width:16px; height:16px; flex-shrink:0;" />
+          I confirm the meter was physically reset or replaced
+        </label>
+        <div style="font-family:'Oswald',sans-serif; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--amber); margin-bottom:6px;">Reset reason required</div>
+        <input id="rm-reset-reason" type="text" placeholder="Reason for the lower reading (required)" style="margin-top:4px;" />
+      </div>
       <div style="display:flex; gap:8px;">
         <button id="rm-save-btn" class="primary big" style="flex:1;">Confirm & Save</button>
         <button id="rm-edit-btn" style="flex:1; padding:16px; font-size:15px;">Edit</button>
@@ -538,17 +517,17 @@ const ABNORMAL_CONSUMPTION_PCT = 30;
 const state = {
   operator: null,        // { id, code, name, level }
   meters: [],
-  pendingPin: "",
-  pinOperator: null,
   liveChannel: null,
   costRates: {},          // meter_type -> shared rate
   tileModalMeter: null,
   tileModalRowId: null,
   tileModalPrevious: null,
   tileModalPreviousDate: null,
+  tileModalReadingDate: null,
   tileModalShiftTag: null,
   tileModalReadOnly: false,
   tileModalIsGauge: false,
+  appStarting: false,
 };
 
 // ============================================================
@@ -585,90 +564,53 @@ function daysBetweenDates(later, earlier) {
 // ============================================================
 // LOGIN FLOW
 // ============================================================
+async function startAuthenticatedApp() {
+  if (state.appStarting || state.operator) return;
+  state.appStarting = true;
+  const ok = await loadOperatorProfile();
+  if (ok) showMainApp();
+  state.appStarting = false;
+}
+
 async function initLogin() {
-  const { data: session } = await sb.auth.getSession();
-  if (session?.session) {
-    const ok = await loadOperatorProfile();
-    if (ok) return showMainApp();
+  const { data: sessionData, error } = await sb.auth.getSession();
+  if (error) {
+    console.error("Session restore failed:", error);
+    return;
   }
-  await loadOperatorPicker();
+  if (sessionData?.session) await startAuthenticatedApp();
 }
 
-async function loadOperatorPicker() {
-  const { data, error } = await sb.from("operators").select("id,code,name").eq("active", true).order("name");
-  const wrap = document.getElementById("operator-picker");
-  wrap.innerHTML = "";
-  if (error) { toast("Could not load operator list", "err"); return; }
-  data.forEach(op => {
-    const btn = document.createElement("button");
-    btn.style.cssText = "padding:16px; font-family:'Oswald',sans-serif; font-size:13px;";
-    btn.textContent = op.name;
-    btn.onclick = () => openPinPad(op);
-    wrap.appendChild(btn);
-  });
-}
-
-function openPinPad(op) {
-  state.pinOperator = op;
-  state.pendingPin = "";
-  document.getElementById("operator-picker").classList.add("hidden");
-  document.getElementById("login-subtitle").classList.add("hidden");
-  document.getElementById("pin-pad-screen").classList.remove("hidden");
-  document.getElementById("pin-operator-name").textContent = op.name;
-  document.getElementById("login-error").classList.add("hidden");
-  renderPinDots();
-  const keys = document.getElementById("pin-keys");
-  keys.innerHTML = "";
-  ["1","2","3","4","5","6","7","8","9","","0","del"].forEach(k => {
-    if (k === "") { keys.appendChild(document.createElement("div")); return; }
-    const btn = document.createElement("button");
-    btn.style.cssText = "padding:16px; font-size:18px;";
-    btn.textContent = k === "del" ? "⌫" : k;
-    btn.onclick = () => k === "del" ? pinBackspace() : pinDigit(k);
-    keys.appendChild(btn);
-  });
-}
-
-function renderPinDots() {
-  const wrap = document.getElementById("pin-dots");
-  wrap.innerHTML = "";
-  for (let i = 0; i < 4; i++) {
-    const d = document.createElement("div");
-    d.className = "pin-dot" + (i < state.pendingPin.length ? " filled" : "");
-    wrap.appendChild(d);
+// Supabase restores the persisted session asynchronously on a page refresh.
+// Handle that event as well as the direct getSession result above.
+sb.auth.onAuthStateChange((event, session) => {
+  if (session && (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED")) {
+    setTimeout(() => startAuthenticatedApp(), 0);
   }
-}
+});
 
-function pinDigit(d) {
-  if (state.pendingPin.length >= 4) return;
-  state.pendingPin += d;
-  renderPinDots();
-  if (state.pendingPin.length === 4) attemptLogin();
-}
-function pinBackspace() {
-  state.pendingPin = state.pendingPin.slice(0, -1);
-  renderPinDots();
-}
-
-document.getElementById("pin-back-btn").onclick = () => {
-  document.getElementById("pin-pad-screen").classList.add("hidden");
-  document.getElementById("operator-picker").classList.remove("hidden");
-  document.getElementById("login-subtitle").classList.remove("hidden");
+document.getElementById("login-form").onsubmit = async event => {
+  event.preventDefault();
+  await attemptLogin();
 };
 
 async function attemptLogin() {
-  const email = `${state.pinOperator.code.toLowerCase()}@mdpl.local`;
-  const { error } = await sb.auth.signInWithPassword({ email, password: state.pendingPin });
+  const form = document.getElementById("login-form");
+  const email = document.getElementById("login-email").value.trim().toLowerCase();
+  const password = document.getElementById("login-password").value;
+  const submitBtn = document.getElementById("login-submit-btn");
   const errEl = document.getElementById("login-error");
+  submitBtn.disabled = true;
+  errEl.classList.add("hidden");
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  submitBtn.disabled = false;
   if (error) {
-    errEl.textContent = "Incorrect PIN. Try again.";
+    errEl.textContent = "Incorrect email or password.";
     errEl.classList.remove("hidden");
-    state.pendingPin = "";
-    renderPinDots();
     return;
   }
-  const ok = await loadOperatorProfile();
-  if (ok) showMainApp();
+  form.reset();
+  await startAuthenticatedApp();
 }
 
 async function loadOperatorProfile() {
@@ -686,10 +628,8 @@ document.getElementById("logout-btn").onclick = async () => {
   if (state.liveChannel) { sb.removeChannel(state.liveChannel); state.liveChannel = null; }
   document.getElementById("main-app").classList.add("hidden");
   document.getElementById("login-screen").classList.remove("hidden");
-  document.getElementById("pin-pad-screen").classList.add("hidden");
-  document.getElementById("operator-picker").classList.remove("hidden");
-  document.getElementById("login-subtitle").classList.remove("hidden");
-  loadOperatorPicker();
+  document.getElementById("login-form").reset();
+  document.getElementById("login-error").classList.add("hidden");
 };
 
 // ============================================================
@@ -713,18 +653,19 @@ async function showMainApp() {
   document.getElementById("header-name").textContent = state.operator.name;
   document.getElementById("header-role").textContent = LEVEL_LABELS[state.operator.level] || state.operator.level;
   document.getElementById("entry-tab-btn").textContent = currentDepartment() || "Readings";
-  document.getElementById("entry-tab-btn").classList.toggle("hidden", isControlRoomOrAdmin());
+  document.getElementById("entry-tab-btn").classList.remove("hidden");
   if (isControlRoomOrAdmin()) document.getElementById("dashboard-tab-btn").classList.remove("hidden");
   document.getElementById("report-tab-btn").classList.remove("hidden"); // visible for every role
   await loadMeters();
   await loadCostRates();
-  setTab(isControlRoomOrAdmin() ? "dashboard" : "entry");
+  document.getElementById("tile-date-select").value = todayStr();
+  setTab("entry");
   subscribeLiveChannel();
 }
 
 document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => setTab(btn.dataset.tab));
 function setTab(tab) {
-  const showTile = tab === "entry" && isFieldLevel();
+  const showTile = tab === "entry" && (isFieldLevel() || isControlRoomOrAdmin());
   document.getElementById("tile-view").classList.toggle("hidden", !showTile);
   document.getElementById("dashboard-view").classList.toggle("hidden", tab !== "dashboard");
   document.getElementById("report-view").classList.toggle("hidden", tab !== "report");
@@ -756,6 +697,12 @@ async function loadCostRates() {
 }
 
 document.getElementById("tile-shift-select").addEventListener("change", refreshTileGrid);
+document.getElementById("tile-date-select").addEventListener("change", refreshTileGrid);
+
+function selectedTileDate() {
+  const dateInput = document.getElementById("tile-date-select");
+  return dateInput.value || todayStr();
+}
 
 function expectedShiftTag(m) {
   if (m.reading_mode === "daily_round") return "Round";
@@ -771,12 +718,15 @@ function departmentMeters() {
 
 async function refreshTileGrid() {
   const tileMeters = departmentMeters();
+  const selectedDate = selectedTileDate();
   const needsShift = tileMeters.some(m => m.reading_mode === "shift_wise");
   document.getElementById("tile-shift-field").classList.toggle("hidden", !needsShift);
   if (needsShift && !document.getElementById("tile-shift-select").value) {
     document.getElementById("tile-shift-select").value = defaultShift();
   }
-  document.getElementById("tile-title").textContent = currentDepartment() ? `${currentDepartment()} Readings` : "All Readings";
+  const titleDate = new Date(selectedDate + "T00:00:00");
+  const formattedDate = titleDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  document.getElementById("tile-title").textContent = `${currentDepartment() ? currentDepartment() + " Readings" : "All Readings"} — ${formattedDate}`;
 
   const grid = document.getElementById("tile-grid");
   const emptyMsg = document.getElementById("tile-empty");
@@ -792,24 +742,24 @@ async function refreshTileGrid() {
   // Parallel fetch:
   // 1) All readings recorded today for meters in this view
   // 2) Most recent readings before today to compute % +/- change
-  const [todayRes, priorRes] = await Promise.all([
+  const [dateRes, priorRes] = await Promise.all([
     sb.from("meter_readings")
-      .select("id, meter_id, shift, recorded_at, reading_value, consumption, reading_date")
-      .eq("reading_date", todayStr()).in("meter_id", tileMeters.map(m => m.id))
+      .select("id, meter_id, shift, recorded_at, reading_value, consumption, reading_date, recorded_by")
+      .eq("reading_date", selectedDate).in("meter_id", tileMeters.map(m => m.id))
       .order("recorded_at", { ascending: false }),
     sb.from("meter_readings")
       .select("id, meter_id, shift, recorded_at, reading_value, consumption, reading_date")
-      .lt("reading_date", todayStr()).in("meter_id", tileMeters.map(m => m.id))
+      .lt("reading_date", selectedDate).in("meter_id", tileMeters.map(m => m.id))
       .order("reading_date", { ascending: false })
       .order("recorded_at", { ascending: false })
       .limit(tileMeters.length * 3)
   ]);
 
-  const todayData = todayRes.data || [];
+  const dateData = dateRes.data || [];
   const priorData = priorRes.data || [];
 
   const readMap = {};
-  todayData.forEach(r => {
+  dateData.forEach(r => {
     const entry = (readMap[r.meter_id] ||= { tags: new Set(), lastTime: null, lastReading: null, byShift: {}, rows: [] });
     entry.tags.add(r.shift);
     entry.rows.push(r);
@@ -884,7 +834,7 @@ async function refreshTileGrid() {
           <div class="rt-status" style="color:var(--text-muted); margin-top:8px;">Tap to log</div>
         `;
       }
-      tile.onclick = () => openTileModal(m, false);
+      tile.onclick = () => openTileModal(m, !isControlRoomOrAdmin());
     } else {
       const shiftTag = expectedShiftTag(m);
       const isDone = !!entry?.tags.has(shiftTag);
@@ -940,7 +890,7 @@ async function refreshTileGrid() {
           <div class="rt-status" style="color:var(--text-muted); margin-top:8px;">Tap to read</div>
         `}
       `;
-      tile.onclick = () => openTileModal(m, isDone);
+      tile.onclick = () => openTileModal(m, isDone && !isControlRoomOrAdmin());
     }
     grid.appendChild(tile);
   });
@@ -1205,6 +1155,7 @@ async function openTileModal(m, readOnly = false) {
   const isGauge = m.value_type === "gauge";
   state.tileModalIsGauge = isGauge;
   const isHourly = m.reading_mode === "hourly";
+  state.tileModalReadingDate = selectedTileDate();
 
   document.getElementById("rm-code").textContent = m.meter_code;
   document.getElementById("rm-name").textContent = m.name;
@@ -1231,6 +1182,7 @@ async function openTileModal(m, readOnly = false) {
   document.getElementById("rm-c-consumption-label").textContent = "Consumption";
   document.getElementById("rm-reset-confirm-wrap").classList.add("hidden");
   document.getElementById("rm-reset-confirm-checkbox").checked = false;
+  document.getElementById("rm-reset-reason").value = "";
 
   // Trend chart: consumption trend for cumulative meters, raw value
   // trend for gauge meters. Loads for both modes; renders once fetched.
@@ -1249,7 +1201,7 @@ async function openTileModal(m, readOnly = false) {
     // locks; a "done" Round/Shift gauge tile still just shows the value).
     const { data } = await sb.from("meter_readings")
       .select("id, reading_value, previous_reading, consumption, recorded_at, recorded_by")
-      .eq("meter_id", m.id).eq("reading_date", todayStr()).eq("shift", state.tileModalShiftTag)
+      .eq("meter_id", m.id).eq("reading_date", state.tileModalReadingDate).eq("shift", state.tileModalShiftTag)
       .maybeSingle();
 
     state.tileModalRowId = data?.id || null;
@@ -1265,7 +1217,8 @@ async function openTileModal(m, readOnly = false) {
     readonlyNote.classList.remove("hidden");
     readonlyNote.textContent = data ? `Recorded at ${fmtTime(data.recorded_at)}. Spotted a mistake? Ask Control Room to correct it.` : "Couldn't find today's reading.";
     const canSelfEdit = data && data.recorded_by === state.operator?.id && (Date.now() - Date.parse(data.recorded_at)) <= 8 * 60 * 60 * 1000;
-    selfEditBtn.classList.toggle("hidden", !canSelfEdit);
+    const canAdminEdit = isControlRoomOrAdmin();
+    selfEditBtn.classList.toggle("hidden", !(canSelfEdit || canAdminEdit));
 
     if (!isGauge && data && data.consumption != null) {
       consumptionBox.classList.remove("hidden");
@@ -1297,40 +1250,55 @@ async function openTileModal(m, readOnly = false) {
     cancelBtn.textContent = "Cancel";
     readonlyNote.classList.add("hidden");
   } else {
-    // Query meter_readings directly (not just the latest_meter_readings
-    // view) so we also get consumption context. Pull the last TWO
-    // readings — if the most recent row's stored `consumption` is
-    // null for any reason, fall back to computing it from these two
-    // values ourselves, rather than silently showing nothing.
-    const { data: recent, error: recentErr } = await sb.from("meter_readings")
-      .select("reading_value, consumption, reading_date")
-      .eq("meter_id", m.id)
-      .order("reading_date", { ascending: false })
-      .order("recorded_at", { ascending: false })
-      .limit(2);
+    // For a historical-date edit, the reset check must compare against the
+    // nearest earlier reading for that meter, not the newest later row.
+    const selectedDate = state.tileModalReadingDate || todayStr();
+    const [{ data: selectedRow, error: selectedErr }, { data: priorRows, error: priorErr }] = await Promise.all([
+      sb.from("meter_readings")
+        .select("id, reading_value, consumption, reading_date, recorded_at")
+        .eq("meter_id", m.id)
+        .eq("reading_date", selectedDate)
+        .eq("shift", state.tileModalShiftTag)
+        .maybeSingle(),
+      sb.from("meter_readings")
+        .select("reading_value, consumption, reading_date")
+        .eq("meter_id", m.id)
+        .lt("reading_date", selectedDate)
+        .order("reading_date", { ascending: false })
+        .order("recorded_at", { ascending: false })
+        .limit(1)
+    ]);
 
-    if (recentErr) console.error("meter_readings lookup failed:", recentErr);
-    const data = recent && recent[0] ? recent[0] : null;
-    const prior = recent && recent[1] ? recent[1] : null;
-    const gapDays = data ? daysBetweenDates(todayStr(), data.reading_date) : 0;
+    if (selectedErr) console.error("selected-date reading lookup failed:", selectedErr);
+    if (priorErr) console.error("prior-date reading lookup failed:", priorErr);
 
-    state.tileModalPrevious = data ? Number(data.reading_value) : null;
-    state.tileModalPreviousDate = data ? data.reading_date : null;
+    const prior = priorRows && priorRows[0] ? priorRows[0] : null;
+    const gapDays = prior ? daysBetweenDates(selectedDate, prior.reading_date) : 0;
+
+    state.tileModalPrevious = prior ? Number(prior.reading_value) : null;
+    state.tileModalPreviousDate = prior ? prior.reading_date : null;
+    state.tileModalRowId = selectedRow?.id || state.tileModalRowId || null;
     state.tileModalBaselineDaily = await loadMeterDailyBaseline(m);
     document.getElementById("rm-previous").textContent = state.tileModalPrevious !== null ? state.tileModalPrevious : "No prior reading";
 
-    let lastConsumption = data && data.consumption != null ? Number(data.consumption) : null;
-    if (lastConsumption === null && data && prior) {
-      lastConsumption = Number(data.reading_value) - Number(prior.reading_value);
+    let lastConsumption = prior && prior.consumption != null ? Number(prior.consumption) : null;
+    if (lastConsumption === null && prior) {
+      const prevPrior = await sb.from("meter_readings")
+        .select("reading_value")
+        .eq("meter_id", m.id)
+        .lt("reading_date", prior.reading_date)
+        .order("reading_date", { ascending: false })
+        .order("recorded_at", { ascending: false })
+        .limit(1)
+        .then(r => r.data && r.data[0] ? r.data[0] : null);
+      if (prevPrior) lastConsumption = Number(prior.reading_value) - Number(prevPrior.reading_value);
     }
-    // A skipped day makes the delta a multi-day total; compare against the
-    // meter's average daily rate instead of the last single interval.
     state.tileModalLastConsumption = lastConsumption;
 
-    if (data && lastConsumption !== null) {
-      const dayLabel = data.reading_date === yesterdayStr()
+    if (prior && lastConsumption !== null) {
+      const dayLabel = prior.reading_date === yesterdayStr()
         ? "Yesterday"
-        : new Date(data.reading_date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        : new Date(prior.reading_date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
       prevConsumptionEl.textContent = gapDays > 1
         ? `Last reading was ${gapDays} days ago. The baseline below is normalized by elapsed days.`
         : `${dayLabel}'s consumption: ${lastConsumption.toFixed(2)} ${m.unit}`;
@@ -1345,9 +1313,9 @@ async function openTileModal(m, readOnly = false) {
     }
     prevConsumptionEl.classList.remove("hidden");
 
-    // Prefill with the previous reading so the operator can just
-    // backspace the digits that changed, instead of retyping the whole value.
-    input.value = state.tileModalPrevious !== null ? state.tileModalPrevious : "";
+    // Prefill with the selected-date reading if it exists; otherwise use the
+    // prior value as the natural starting point for a new historical entry.
+    input.value = selectedRow ? selectedRow.reading_value : (state.tileModalPrevious !== null ? state.tileModalPrevious : "");
     input.readOnly = false;
     viewBadge.classList.add("hidden");
     reviewBtn.classList.remove("hidden");
@@ -1395,7 +1363,8 @@ function updateTileModalConsumption() {
     box.style.background = consumption < 0 ? "var(--red-bg)" : "var(--green-bg)";
 
     const baselineDaily = state.tileModalBaselineDaily;
-    const intervalDays = state.tileModalPreviousDate ? Math.max(daysBetweenDates(todayStr(), state.tileModalPreviousDate), 1) : 1;
+    const selectedDate = state.tileModalReadingDate || selectedTileDate();
+    const intervalDays = state.tileModalPreviousDate ? Math.max(daysBetweenDates(selectedDate, state.tileModalPreviousDate), 1) : 1;
     const currentDaily = consumption / intervalDays;
     if (baselineDaily !== null && baselineDaily !== 0) {
       const pct = ((currentDaily - baselineDaily) / Math.abs(baselineDaily)) * 100;
@@ -1417,6 +1386,8 @@ function updateReviewButton() {
 document.getElementById("rm-cancel-btn").onclick = () => {
   document.getElementById("round-modal").classList.remove("open");
   state.tileModalMeter = null;
+  state.tileModalRowId = null;
+  state.tileModalReadingDate = null;
   state.tileModalReadOnly = false;
 };
 
@@ -1464,7 +1435,8 @@ document.getElementById("rm-review-btn").onclick = () => {
     let changeText = "";
     let changeColor = "var(--text-muted)";
     const baselineDaily = state.tileModalBaselineDaily;
-    const intervalDays = state.tileModalPreviousDate ? Math.max(daysBetweenDates(todayStr(), state.tileModalPreviousDate), 1) : 1;
+    const selectedDate = state.tileModalReadingDate || selectedTileDate();
+    const intervalDays = state.tileModalPreviousDate ? Math.max(daysBetweenDates(selectedDate, state.tileModalPreviousDate), 1) : 1;
     const currentDaily = consumption !== null ? consumption / intervalDays : null;
     if (consumption !== null && currentDaily !== null && baselineDaily !== null && baselineDaily !== 0) {
       pct = ((currentDaily - baselineDaily) / Math.abs(baselineDaily)) * 100;
@@ -1514,13 +1486,18 @@ document.getElementById("rm-review-btn").onclick = () => {
     // Spikes alone (not low) don't get this extra gate.
     const resetWrap = document.getElementById("rm-reset-confirm-wrap");
     const resetCheckbox = document.getElementById("rm-reset-confirm-checkbox");
+    const resetReasonInput = document.getElementById("rm-reset-reason");
     const saveBtn = document.getElementById("rm-save-btn");
     if (isLow) {
       resetWrap.classList.remove("hidden");
       resetCheckbox.checked = false;
+      resetReasonInput.value = "";
       saveBtn.disabled = true;
+      resetReasonInput.focus();
     } else {
       resetWrap.classList.add("hidden");
+      resetCheckbox.checked = false;
+      resetReasonInput.value = "";
       saveBtn.disabled = false;
     }
   }
@@ -1537,8 +1514,24 @@ document.getElementById("rm-edit-btn").onclick = () => {
   document.getElementById("rm-reading-input").focus();
 };
 
-document.getElementById("rm-reset-confirm-checkbox").addEventListener("change", (e) => {
-  document.getElementById("rm-save-btn").disabled = !e.target.checked;
+document.getElementById("rm-reset-confirm-checkbox").addEventListener("change", () => {
+  const resetCheckbox = document.getElementById("rm-reset-confirm-checkbox");
+  const resetReason = document.getElementById("rm-reset-reason").value.trim();
+  const saveBtn = document.getElementById("rm-save-btn");
+  const prev = state.tileModalPrevious;
+  const val = parseFloat(document.getElementById("rm-reading-input").value);
+  const isLow = !state.tileModalIsGauge && prev !== null && val < prev;
+  saveBtn.disabled = isLow ? !(resetCheckbox.checked && resetReason.length > 0) : false;
+});
+
+document.getElementById("rm-reset-reason").addEventListener("input", () => {
+  const resetCheckbox = document.getElementById("rm-reset-confirm-checkbox");
+  const resetReason = document.getElementById("rm-reset-reason").value.trim();
+  const saveBtn = document.getElementById("rm-save-btn");
+  const prev = state.tileModalPrevious;
+  const val = parseFloat(document.getElementById("rm-reading-input").value);
+  const isLow = !state.tileModalIsGauge && prev !== null && val < prev;
+  saveBtn.disabled = isLow ? !(resetCheckbox.checked && resetReason.length > 0) : false;
 });
 
 // Final Save
@@ -1547,10 +1540,18 @@ document.getElementById("rm-save-btn").onclick = async () => {
   const m = state.tileModalMeter;
   const prev = state.tileModalPrevious;
   const isLow = !state.tileModalIsGauge && prev !== null && val < prev;
+  const resetReason = document.getElementById("rm-reset-reason").value.trim();
 
-  if (isLow && !document.getElementById("rm-reset-confirm-checkbox").checked) {
-    toast("Please confirm the meter reset before saving", "err");
-    return;
+  if (isLow) {
+    if (!document.getElementById("rm-reset-confirm-checkbox").checked) {
+      toast("Please confirm the meter reset before saving", "err");
+      return;
+    }
+    if (!resetReason) {
+      toast("Add a reason for the lower reading before saving", "err");
+      document.getElementById("rm-reset-reason").focus();
+      return;
+    }
   }
 
   const btn = document.getElementById("rm-save-btn");
@@ -1561,8 +1562,8 @@ document.getElementById("rm-save-btn").onclick = async () => {
     reading_value: val,
     recorded_by: state.operator.id,
     shift: state.tileModalShiftTag,
-    reading_date: todayStr(),
-    notes: isLow ? "possible reset — confirmed by operator" : null,
+    reading_date: state.tileModalReadingDate || selectedTileDate(),
+    notes: isLow ? `possible reset — confirmed by operator: ${resetReason}` : null,
   };
   const result = state.tileModalRowId
     ? await sb.from("meter_readings").update(reading).eq("id", state.tileModalRowId)
@@ -1571,7 +1572,20 @@ document.getElementById("rm-save-btn").onclick = async () => {
 
   btn.disabled = false; btn.textContent = "Confirm & Save";
 
-  if (error) { toast("Save failed: " + error.message, "err"); return; }
+  if (error) {
+    if (error.message && error.message.includes("Only your own reading can be edited within 8 hours")) {
+      const isPrivilegedEdit = isControlRoomOrAdmin();
+      toast(
+        isPrivilegedEdit
+          ? "Save failed: this admin/control-room edit is still being blocked by the 8-hour owner lock in the database. Use the selected date tile, confirm the reset reason, and verify the admin policy is active in Supabase."
+          : "Save failed: This reading is locked to its owner for 8 hours. Use the selected date tile and confirm the reset reason before saving, or ask the owner/admin to correct it.",
+        "err"
+      );
+    } else {
+      toast("Save failed: " + error.message, "err");
+    }
+    return;
+  }
 
   toast(`${state.tileModalRowId ? "Updated" : "Saved"} ✓ ${m.meter_code}`);
   document.getElementById("round-modal").classList.remove("open");
@@ -1608,10 +1622,7 @@ function subscribeLiveChannel() {
 // ============================================================
 async function initDashboard() {
   document.getElementById("add-meter-panel").classList.toggle("hidden", !isAdmin());
-  document.getElementById("backfill-panel").classList.toggle("hidden", !isControlRoomOrAdmin());
   document.getElementById("filter-date").value = todayStr();
-  document.getElementById("bf-date").max = todayStr();
-  populateBackfillMeters();
   refreshGroupOptions();
 
   ["filter-date", "filter-shift", "filter-group", "filter-search"].forEach(id => {
@@ -1629,7 +1640,8 @@ function populateBackfillMeters() {
   if (state.meters.some(m => String(m.id) === current)) select.value = current;
 }
 
-document.getElementById("backfill-form").addEventListener("submit", async (e) => {
+const backfillForm = document.getElementById("backfill-form");
+if (backfillForm) backfillForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const meterId = document.getElementById("bf-meter").value;
   const readingDate = document.getElementById("bf-date").value;
@@ -1700,6 +1712,37 @@ async function refreshDashboard() {
   renderChecklist(f);
 }
 
+async function openAdminEditReading(readingId) {
+  const { data, error } = await sb.from("meter_readings")
+    .select("id, meter_id, reading_value, shift, reading_date, recorded_at, notes, meters(*)")
+    .eq("id", readingId)
+    .maybeSingle();
+
+  if (error || !data) {
+    toast("Reading not found", "err");
+    return;
+  }
+
+  const meter = data.meters;
+  if (!meter) {
+    toast("Meter details are unavailable for this reading", "err");
+    return;
+  }
+
+  state.tileModalReadingDate = data.reading_date;
+  state.tileModalShiftTag = data.shift || expectedShiftTag(meter);
+  await openTileModal(meter, false);
+  state.tileModalRowId = data.id;
+  document.getElementById("rm-reading-input").value = data.reading_value;
+  document.getElementById("rm-reading-input").readOnly = false;
+  document.getElementById("rm-view-badge").classList.add("hidden");
+  document.getElementById("rm-self-edit-btn").classList.add("hidden");
+  document.getElementById("rm-review-btn").classList.remove("hidden");
+  document.getElementById("rm-cancel-btn").textContent = "Cancel";
+  document.getElementById("rm-readonly-note").classList.add("hidden");
+  updateTileModalConsumption();
+}
+
 function renderLiveTable(rows) {
   const body = document.getElementById("live-table-body");
   const empty = document.getElementById("live-table-empty");
@@ -1708,6 +1751,7 @@ function renderLiveTable(rows) {
   rows.forEach(r => {
     const isGauge = r.meters?.value_type === "gauge";
     const tr = document.createElement("tr");
+    const canEdit = isControlRoomOrAdmin();
     tr.innerHTML = `
       <td>${fmtTime(r.recorded_at)}</td>
       <td style="font-weight:700;">${r.meters?.meter_code || ""}</td>
@@ -1716,8 +1760,16 @@ function renderLiveTable(rows) {
       <td>${r.reading_value} ${r.meters?.unit || ""}</td>
       <td style="${!isGauge && r.consumption < 0 ? "color:var(--red);" : ""}">${isGauge ? "—" : r.consumption}</td>
       <td>${r.operators?.name || ""}</td>
+      <td>${canEdit ? `<button type="button" class="edit-reading-btn" data-reading-id="${r.id}" style="padding:6px 10px; font-size:10px;">Edit</button>` : "—"}</td>
     `;
     body.appendChild(tr);
+  });
+
+  body.querySelectorAll(".edit-reading-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openAdminEditReading(btn.dataset.readingId);
+    });
   });
 }
 
@@ -1868,10 +1920,10 @@ function initReport() {
   }
   reportInitialized = true;
 
-  // Default range: last 7 days (today back to 6 days ago)
+  // Default range: last 30 days, with custom date controls for older history.
   const today = new Date();
   const from = new Date(today);
-  from.setDate(from.getDate() - 6);
+  from.setDate(from.getDate() - 29);
   document.getElementById("rp-to").value = today.toISOString().slice(0, 10);
   document.getElementById("rp-from").value = from.toISOString().slice(0, 10);
 
@@ -1955,7 +2007,11 @@ async function refreshReport() {
       reportAllRows = [];
       reportDisplayedCount = 0;
       renderReportKPIs([]);
-      renderReportChart([], from, to);
+      try {
+        renderReportChart([], from, to);
+      } catch (chartError) {
+        console.error("Report chart render failed:", chartError);
+      }
       renderReportTable([], true);
       return;
     }
@@ -1973,7 +2029,20 @@ async function refreshReport() {
   if (meterIdsFilter) query = query.in("meter_id", meterIdsFilter);
 
   const { data, error } = await query;
-  if (error) { toast("Report load failed", "err"); return; }
+  if (error) {
+    console.error("Report load failed:", error);
+    reportAllRows = [];
+    reportDisplayedCount = 0;
+    renderReportKPIs([]);
+    try {
+      renderReportChart([], from, to);
+    } catch (chartError) {
+      console.error("Report chart render failed:", chartError);
+    }
+    renderReportTable([], true);
+    toast(`Report load failed: ${error.message}`, "err");
+    return;
+  }
 
   let rows = data || [];
   if (group && !meterId) {
@@ -1983,8 +2052,18 @@ async function refreshReport() {
   reportAllRows = rows;
   reportDisplayedCount = 0;
 
+  if (rows.length === 0) {
+    toast(`No readings found between ${from} and ${to}`, "err");
+  }
+
   renderReportKPIs(rows);
-  renderReportChart(rows, from, to);
+  try {
+    renderReportChart(rows, from, to);
+  } catch (chartError) {
+    console.error("Report chart render failed:", chartError);
+    const chartTitle = document.getElementById("rp-chart-title");
+    if (chartTitle) chartTitle.textContent = "Daily Consumption (chart unavailable)";
+  }
   renderReportTable(rows, true);
 }
 
@@ -2170,6 +2249,7 @@ function renderReportTable(rows, reset = false) {
     }
     const tr = document.createElement("tr");
     if (consNum != null && consNum < 0) tr.style.background = "rgba(229,72,77,0.07)";
+    const canEdit = isControlRoomOrAdmin();
     tr.innerHTML = `
       <td>${r.reading_date}</td>
       <td>${fmtTime(r.recorded_at)}</td>
@@ -2182,8 +2262,16 @@ function renderReportTable(rows, reset = false) {
       <td>${costStr || "—"}</td>
       <td>${r.operators?.name || ""}</td>
       <td style="color:var(--text-muted); font-size:11px;">${r.notes || ""}</td>
+      <td>${canEdit ? `<button type="button" class="rp-edit-reading-btn" data-reading-id="${r.id}" style="padding:6px 10px; font-size:10px;">Edit</button>` : "—"}</td>
     `;
     body.appendChild(tr);
+  });
+
+  body.querySelectorAll(".rp-edit-reading-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openAdminEditReading(btn.dataset.readingId);
+    });
   });
 }
 

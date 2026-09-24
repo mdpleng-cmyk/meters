@@ -21,6 +21,42 @@ alter table public.meter_reading_audit
 
 alter table public.meter_reading_audit enable row level security;
 
+-- Keep the DB-side role checks in sync with the app. Admin and Control Room
+-- users should be treated as privileged editors when the trigger decides whether
+-- an update is allowed.
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.operators o
+    where o.id = auth.uid()
+      and o.level = 'admin'
+  );
+$$;
+
+create or replace function public.is_control_room_or_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.operators o
+    where o.id = auth.uid()
+      and o.level in ('control_room', 'admin')
+  );
+$$;
+
+grant execute on function public.is_admin() to authenticated;
+grant execute on function public.is_control_room_or_admin() to authenticated;
+
 drop policy if exists meter_reading_audit_control_room_read on public.meter_reading_audit;
 create policy meter_reading_audit_control_room_read
   on public.meter_reading_audit for select
@@ -111,6 +147,14 @@ create policy meter_readings_owner_update_window
       and recorded_at >= now() - interval '8 hours'
     )
   );
+
+-- Verify deployment in the Supabase SQL Editor. The app save itself verifies
+-- the auth.uid()-based role path because SQL Editor sessions have no auth.uid().
+-- select proname from pg_proc
+-- where proname in ('is_admin', 'is_control_room_or_admin');
+-- select policyname from pg_policies
+-- where tablename = 'meter_readings'
+--   and policyname = 'meter_readings_owner_update_window';
 
 -- Keep previous_reading and generated consumption correct after a historical
 -- insert or a value correction. The depth guard prevents recursive updates.

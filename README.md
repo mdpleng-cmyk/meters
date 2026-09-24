@@ -8,13 +8,13 @@ A reference for how the pieces fit together. Three files make up the whole syste
 
 | Module | What it does |
 |---|---|
-| **`operators` table** | One row per person. `id` = matching Supabase Auth user UID. `code` builds their login email (`<code>@mdpl.local`). `level` (enum: `apprentice`, `operator`, `utility_operator`, `control_room`, `admin`) drives both which entry screen they see and what they're allowed to write — see the hierarchy table below. |
+| **`operators` table** | One row per person. `id` = matching Supabase Auth user UID. `code` is the internal operator identifier. Their real email is stored in Supabase Auth and is used for login. `level` (enum: `apprentice`, `operator`, `utility_operator`, `control_room`, `admin`) drives both which entry screen they see and what they're allowed to write — see the hierarchy table below. |
 | **`meters` table** | Master list of physical meters: `meter_code`, `name`, `location`, `meter_group` (dashboard filtering), `unit`, `meter_type` (enum: `energy`/`hours`/`mass`/`volume`/`flow`/`other`), `reading_mode` (enum: `daily_round` / `shift_wise` — permanent per meter, never both), `cost_per_unit` (nullable — only meters with a real per-unit cost get one; leave blank for running-hours, pressure, etc.), `active` flag. |
 | **`meter_readings` table** | One row per submitted reading. Stores `reading_value`, auto-filled `previous_reading`, a generated `consumption` column, who recorded it, `shift` (`Morning`/`Evening`/`Night`/`Round`), `reading_date`, and optional `notes` (flags a confirmed low/reset reading). |
 | **`latest_meter_readings` view** | Returns just the most recent reading per meter — what the app queries to show "previous reading" on the entry screen. |
 | **`set_previous_reading()` trigger** | Fires before every insert; looks up the last reading for that meter and stamps it into `previous_reading` automatically. |
 | **`is_control_room_or_admin()` / `is_admin()` functions** | RLS helpers checking the logged-in user's `level`. |
-| **RLS policies** | `operators`: names are public (needed for the login picker); only **Admin** can add/edit. `meters`: any logged-in user can read; only **Admin** can add/edit. `meter_readings`: any logged-in user can read; operators can only insert rows attributed to themselves (`auth.uid() = recorded_by`); users can update their own reading for 8 hours; **Control Room or Admin** can backfill and edit. Corrections are recorded in `meter_reading_audit`. |
+| **RLS policies** | `operators`: only **Admin** can add/edit. `meters`: any logged-in user can read; only **Admin** can add/edit. `meter_readings`: any logged-in user can read; operators can only insert rows attributed to themselves (`auth.uid() = recorded_by`); users can update their own reading for 8 hours; **Control Room or Admin** can backfill and edit. Corrections are recorded in `meter_reading_audit`. |
 
 ### The operator hierarchy
 
@@ -36,13 +36,13 @@ Everything lives in one file: HTML structure, hand-rolled dark theme (matches [[
 |---|---|
 | **Config** | `SUPABASE_URL` / `SUPABASE_ANON_KEY` — the only two values you edit per deployment. |
 | **State object** | Current operator (with `level`), meter list, tile-read tracking, modal state. Nothing persisted beyond the page session except the Supabase Auth session (handled by the SDK). |
-| **Login flow** | Same as before: `initLogin()` → `loadOperatorPicker()` → PIN pad → `attemptLogin()` → `loadOperatorProfile()` (now selects `level` instead of the old `role`/`operator_type`). |
+| **Login flow** | `initLogin()` → email/password form → `attemptLogin()` → `loadOperatorProfile()` (now selects `level` instead of the old `role`/`operator_type`). The email is passed directly to Supabase Auth, and the operator profile is found through the Auth user ID. |
 | **Level helpers** | `isRoundLevel()` (apprentice/operator), `isUtilityLevel()`, `isControlRoomOrAdmin()`, `isAdmin()` — every routing decision in the app reads through these instead of checking `level` inline. |
 | **Tile View** (`refreshTileGrid()`) | The one entry screen for every reading-taking level. Round levels: flat grid of `daily_round` meters, "done" = read today (`shift = 'Round'`). Utility level: same grid mechanics but scoped to `shift_wise` meters, with a shift selector — "done" is per-shift, not per-day. Tapping a pending tile opens the reading modal. |
 | **Reading modal** | Two-step: **Entry** (reading input, live consumption preview) → **Review** (shows entered reading, consumption, and estimated cost — only if the meter has `cost_per_unit` set — plus a low-reading warning if the value dropped) → **Confirm & Save** inserts the row, or **Edit** goes back. |
 | **Control Room Dashboard** | Only shown to Control Room/Admin. Filters (date/shift incl. "Round"/group/search) → `refreshDashboard()` → `renderChecklist()` (read/pending per meter) → `renderLiveTable()` (raw feed) → realtime channel keeps both the dashboard and tile view in sync without a refresh → `exportCsv()`. |
 | **Add Meter panel** (Admin only) | Form: code, name, location, group, type, unit, reading mode, optional cost per unit. Inserts directly into `meters` — live in the reading queue immediately, no deploy. |
-| **Add Operator panel** (Admin only) | *Not* a live account-creation flow — creating a Supabase Auth user needs a service-role key, which can't safely live in a public HTML file, and calling public sign-up from the admin's own session would hijack it. Instead this generates the exact values (login email, PIN, and the `operators` row fields) for you to paste into the Supabase dashboard in two manual steps. |
+| **Add Operator panel** (Admin only) | *Not* a live account-creation flow — creating a Supabase Auth user needs a service-role key, which can't safely live in a public HTML file, and calling public sign-up from the admin's own session would hijack it. Instead this generates the exact values (login email, password, and the `operators` row fields) for you to paste into the Supabase dashboard in two manual steps. |
 | **Toast helper** | Save-confirmation / error popups. |
 
 ---
@@ -55,6 +55,7 @@ Everything lives in one file: HTML structure, hand-rolled dark theme (matches [[
 4. **`migration_fix_shift_constraint.sql`** — the original `shift` check constraint only allowed Morning/Evening/Night; extended to include `Round`.
 5. **`migration_meter_cost.sql`** — adds the nullable `cost_per_unit` column used by the reading modal's estimated-cost display.
 6. **`migration_reading_corrections.sql`** — adds Control Room backfills, the 8-hour owner edit window, audit records, and recalculation of the reading chain after historical changes.
+7. **`migration_operator_code_default.sql`** — automatically generates an internal code such as `OP-7F3A91C2` when a new operator is inserted without one.
 
 `migration_control_room.sql` (renamed `supervisor` → `control_room`) is now superseded by the level-hierarchy migration and only matters for archaeology.
 
@@ -63,7 +64,7 @@ Everything lives in one file: HTML structure, hand-rolled dark theme (matches [[
 ## How a reading actually flows through the system
 
 ```
-Operator taps name → PIN → Supabase Auth session created
+Operator enters email → password → Supabase Auth session created
         ↓
 loadOperatorProfile() reads their `level`
         ↓
@@ -91,5 +92,6 @@ Realtime broadcasts the change → tile grid AND Control Room dashboard update i
 - **The trigger only fires on INSERT**, not UPDATE — Control Room manually editing a `reading_value` later leaves that row's `previous_reading` as originally recorded.
 - **`cost_per_unit` is optional and per-meter** — the modal only shows an estimated cost row when it's set; don't reintroduce a single global rate, since different meter types (kWh vs hours vs kg) aren't comparable.
 - **Add Operator is intentionally manual** — the helper panel generates values, it doesn't call any API. If this ever needs to become fully automatic, it requires a Supabase Edge Function holding the service-role key server-side, not client-side code.
+- **Operator codes are system-managed** — after running `migration_operator_code_default.sql`, Supabase generates them automatically and rejects attempts to change them. The Supabase Table Editor may still display the column; hiding it requires using a separate view or managing operators through a custom admin form.
 - **GitHub Pages needs the file named exactly `index.html`** — losing the extension makes Pages fall back to rendering this README instead of the app.
 - **Nothing is stored in browser localStorage manually** — session persistence is entirely handled by the Supabase JS SDK.
